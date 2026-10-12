@@ -1,0 +1,24 @@
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ---- Secrets: never commit real passwords ----
+.env
+!.env.example
+
+# ---- Uploaded files (item photos, proof images) ----
+backend/uploads/
+
+# ---- Frontend (Next.js) ----
+node_modules/
+.next/
+out/
+
+# ---- Editors and OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
