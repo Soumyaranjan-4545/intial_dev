@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
 from app.core.deps import DbSession, OnboardedUser
-from app.core.errors import not_found
+from app.core.errors import forbidden, not_found
 from app.models import ItemKind, ItemPhoto
 from app.schemas.item import (
     CloseLostIn,
@@ -19,9 +19,10 @@ from app.schemas.item import (
     ItemPage,
     LostItemIn,
     SecretDetailIn,
+    SimilarOut,
 )
 from app.services import items as items_service
-from app.services import storage
+from app.services import matching, storage
 
 router = APIRouter(prefix="/items", tags=["items"])
 
@@ -69,6 +70,18 @@ def report_found(data: FoundItemIn, user: OnboardedUser, db: DbSession):
 def item_detail(item_id: int, user: OnboardedUser, db: DbSession):
     item = items_service.get_visible_item(db, item_id, user)
     return items_service.detail_for(db, item, user)
+
+
+@router.get("/{item_id}/similar", response_model=SimilarOut)
+def similar_items(item_id: int, user: OnboardedUser, db: DbSession):
+    """"Similar items found": found items that may match a lost report, or
+    lost reports that may match a found item. Only for the person who
+    reported the item, and staff. The ranking comes from the matcher
+    (services/matching.py); with the placeholder it is always empty."""
+    item = items_service.get_visible_item(db, item_id, user)
+    if not matching.can_see_similar(item, user):
+        raise forbidden("Suggestions are shown to the person who reported the item, while it's still open.")
+    return matching.similar_items(db, item)
 
 
 @router.put("/{item_id}/secret-detail", response_model=ItemDetailOut)

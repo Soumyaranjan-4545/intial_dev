@@ -415,7 +415,7 @@ function StaffReview({ claim, onChanged }) {
 }
 
 // Same minimum as the backend (RequiredNoteIn in schemas/claim.py).
-const MIN_NOTE = 5;
+const MIN_NOTE = 1;
 
 /** Each action that needs typing opens its own small form; only one at a time. */
 function StaffActions({ claim, onChanged }) {
@@ -564,7 +564,7 @@ function StaffActions({ claim, onChanged }) {
             {form.required && (
               <span className="hint" id="staff-note-hint" aria-live="polite">
                 {note.trim().length < MIN_NOTE
-                  ? `Write at least ${MIN_NOTE} characters (${note.trim().length} so far).`
+                  ? "Required: write a short note."
                   : "The claimant can see this note."}
               </span>
             )}

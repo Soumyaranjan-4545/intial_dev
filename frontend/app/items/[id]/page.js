@@ -11,6 +11,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
+import SimilarItems from "@/components/SimilarItems";
 import StaffPanel from "@/components/StaffPanel";
 import { apiFetch, apiUpload, photoUrl } from "@/lib/api";
 import { CLAIM_STATUS_LABELS, OPEN_CLAIM_STATUSES, STATUS_LABELS, formatDate, formatDateTime } from "@/lib/labels";
@@ -177,6 +178,8 @@ function ItemDetail() {
 
       <h2>Description</h2>
       <p className={styles.description}>{item.description}</p>
+
+      {item.can_see_similar && <SimilarItems item={item} />}
 
       {/* While receiving, the secret is checked in the Receive form instead. */}
       {(item.can_edit_secret || (isStaff && isFound)) && !item.can_receive && (

@@ -143,6 +143,8 @@ class ItemDetailOut(ItemCardOut):
     can_edit_secret: bool
     can_close: bool
     returned_at: datetime | None
+    # ---- Similar items ----
+    can_see_similar: bool
     # ---- Claims ----
     can_claim: bool
     my_claim: "MyClaimBrief | None"
@@ -172,6 +174,18 @@ class ItemClaimRow(BaseModel):
     status: str
     claimant_name: str | None
     created_at: datetime
+
+
+class SimilarItemOut(BaseModel):
+    item: ItemCardOut
+    score: float  # 0..1, from the matcher
+    reason: str | None
+
+
+class SimilarOut(BaseModel):
+    # False while the placeholder matcher is in use ("matching is off").
+    enabled: bool
+    matches: list[SimilarItemOut]
 
 
 ItemDetailOut.model_rebuild()

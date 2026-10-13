@@ -1,0 +1,12 @@
+.section {
+  margin: 2rem 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.match {
+  margin: 0.25rem 0 0;
+  font-size: var(--text-sm);
+}

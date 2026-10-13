@@ -36,7 +36,7 @@ from app.models import (
 )
 from app.models.item import HELD_STATUSES, PUBLIC_STATUSES
 from app.schemas.item import CloseLostIn, FoundItemIn, LostItemIn, SecretDetailIn
-from app.services import storage
+from app.services import matching, storage
 
 MAX_DAYS_AGO = 365  # reports about things lost more than a year ago are refused
 
@@ -67,6 +67,7 @@ def report_lost(db: Session, user: User, data: LostItemIn) -> Item:
     )
     db.add(item)
     db.commit()
+    matching.notify_saved(db, item)  # let the matcher (if any) index it
     return item
 
 
@@ -86,6 +87,7 @@ def report_found(db: Session, user: User, data: FoundItemIn) -> Item:
     )
     db.add(item)
     db.commit()
+    matching.notify_saved(db, item)  # let the matcher (if any) index it
     return item
 
 
@@ -167,6 +169,7 @@ def detail_for(db: Session, item: Item, user: User) -> dict:
         "can_add_photos": can_add_photos(item, user),
         "can_edit_secret": can_edit_secret(item, user),
         "can_close": can_close(item, user),
+        "can_see_similar": matching.can_see_similar(item, user),
         # ---- Claims ----
         "can_claim": claims.can_claim(db, item, user),
         "my_claim": my_claim,
@@ -228,6 +231,7 @@ def add_photo(db: Session, item: Item, user: User, data: bytes, content_type: st
         storage.delete(stored_name)  # don't leave an orphan file behind
         raise
     db.refresh(item)
+    matching.notify_saved(db, item)  # a new photo can change what it matches
     return photo
 
 

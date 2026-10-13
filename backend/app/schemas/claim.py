@@ -40,7 +40,7 @@ class RequiredNoteIn(BaseModel):
     """For decisions the claimant must understand: a rejection reason, what
     to bring to the office, what they explained in person."""
 
-    note: str = Field(min_length=5, max_length=500)
+    note: str = Field(min_length=1, max_length=500)
 
     @field_validator("note", mode="before")
     @classmethod

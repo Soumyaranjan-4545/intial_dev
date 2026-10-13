@@ -32,6 +32,7 @@ from app.models import (
 from app.models.item import HELD_STATUSES
 from app.schemas.staff import DisposeIn, ReceiveIn, TransferIn, WalkInIn
 from app.services import items as items_service
+from app.services import matching
 
 CLOSED_STATUSES = [ItemStatus.RETURNED, ItemStatus.DISPOSED, ItemStatus.DONATED]
 
@@ -114,6 +115,7 @@ def receive_item(db: Session, item: Item, actor: User, data: ReceiveIn) -> Item:
     item.received_at = now()
     _log(db, item, CustodyEventType.RECEIVED, actor, to_office=office, note=data.condition_note)
     db.commit()
+    matching.notify_saved(db, item)
     return item
 
 
@@ -142,6 +144,7 @@ def register_walk_in(db: Session, actor: User, data: WalkInIn) -> Item:
     note = f"Handed in by: {data.handed_in_by}" if data.handed_in_by else "Walk-in, no online report"
     _log(db, item, CustodyEventType.REGISTERED, actor, to_office=office, note=note)
     db.commit()
+    matching.notify_saved(db, item)
     return item
 
 

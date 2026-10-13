@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     email_from: str = ""
 
+    # ---- Similar items (AI matching, see docs/MATCHING.md) ----
+    # "placeholder" = matching switched off. A teammate's matcher registers
+    # its own name in app/services/matching.py.
+    matching_backend: str = "placeholder"
+
     @property
     def database_url(self) -> URL:
         """Build the connection URL from the parts above.
