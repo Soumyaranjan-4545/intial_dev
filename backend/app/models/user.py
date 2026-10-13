@@ -65,15 +65,18 @@ class User(TimestampMixin, Base):
     )
 
     @property
-    def is_onboarded(self) -> bool:
-        """A user must complete onboarding (name + roll number) before
-        reporting or claiming items."""
-        return bool(self.full_name and self.roll_number)
-
-    @property
     def is_staff(self) -> bool:
         """Guards and the admin share every item and claim power."""
         return self.role in (UserRole.GUARD, UserRole.ADMIN)
+
+    @property
+    def is_onboarded(self) -> bool:
+        """A user must complete onboarding before reporting or claiming
+        items. Everyone needs a name; students also need a roll number,
+        which guards check against the ID card. Staff have no roll number."""
+        if not self.full_name:
+            return False
+        return self.is_staff or bool(self.roll_number)
 
     def __repr__(self) -> str:
         return f"<User {self.id} {self.email} {self.role}>"

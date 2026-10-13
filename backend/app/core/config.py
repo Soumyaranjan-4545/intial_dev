@@ -8,7 +8,9 @@ Keeping settings here (instead of hard-coding them in the code) means:
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -24,16 +26,37 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database connection details
+    # ---- Database ----
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "lostfound"
     db_user: str = "lostfound"
     db_password: str  # no default: the app refuses to start without it
 
-    # App rules
+    # ---- Security ----
+    # min_length: refuse to start with a short, guessable secret.
+    secret_key: str = Field(min_length=32)
+    session_days: int = 30
+    cookie_secure: bool = False
+    session_cookie_name: str = "lf_session"
+
+    # Login codes
+    login_code_minutes: int = 10  # a code expires after this long
+    login_code_max_attempts: int = 5  # wrong guesses allowed per code
+    login_code_resend_seconds: int = 60  # wait between code requests
+    login_code_max_per_hour: int = 5  # codes one email can request per hour
+
+    # ---- App rules ----
     allowed_email_domain: str = "iitk.ac.in"
     frontend_origin: str = "http://localhost:3000"
+
+    # ---- Email ----
+    email_backend: Literal["console", "smtp"] = "console"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    email_from: str = ""
 
     @property
     def database_url(self) -> URL:

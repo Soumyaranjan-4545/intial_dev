@@ -1,0 +1,35 @@
+.section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin: 1.5rem 0;
+}
+
+/* Label / value pairs side by side, stacking on narrow screens. */
+.details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.details dt {
+  color: var(--muted);
+}
+
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere; /* long emails wrap instead of overflowing */
+}
+
+@media (max-width: 30rem) {
+  .details {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .details dd {
+    margin-bottom: 0.75rem;
+  }
+}

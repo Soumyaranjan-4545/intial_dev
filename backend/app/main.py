@@ -5,23 +5,26 @@ Run it from the backend folder with:
 ("app.main" = this file, ":app" = the variable below, --reload = restart on code changes)
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.routers import health
+from app.core.errors import AppError
+from app.routers import admin, auth, health, reference, users
 
 settings = get_settings()
 
 app = FastAPI(
     title="IITK Lost & Found API",
     description="Report, find, claim and return lost items through campus security offices.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # CORS: browsers block a page on one address (the Next.js site, port 3000)
 # from calling an API on another (this API, port 8000) unless the API
 # explicitly allows it. We allow only our own frontend.
+# allow_credentials lets the browser send the session cookie.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
@@ -30,4 +33,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(AppError)
+def handle_app_error(request: Request, error: AppError) -> JSONResponse:
+    """Turn any AppError raised by a service into {"detail": "..."}."""
+    return JSONResponse(status_code=error.status_code, content={"detail": error.message})
+
+
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(reference.router)
+app.include_router(admin.router)

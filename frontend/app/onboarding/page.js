@@ -1,0 +1,150 @@
+"use client";
+
+/**
+ * First-time profile, shown once after the first sign-in.
+ * Students give their name and roll number (locked afterwards, because
+ * guards check them against the ID card). Staff only need a name.
+ */
+
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+import { useAuth } from "@/components/AuthProvider";
+import SiteHeader from "@/components/SiteHeader";
+import { apiFetch } from "@/lib/api";
+
+const EMPTY = { full_name: "", roll_number: "", phone: "", hall: "", room: "" };
+
+export default function OnboardingPage() {
+  const router = useRouter();
+  const { user, loading, setUser } = useAuth();
+  const [form, setForm] = useState(EMPTY);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const isStaff = user?.role === "GUARD" || user?.role === "ADMIN";
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.replace("/login");
+    else if (user.is_onboarded) router.replace("/");
+  }, [user, loading, router]);
+
+  // One change handler for every input: the input's "name" says which field.
+  function update(event) {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    setFieldErrors((current) => ({ ...current, [name]: undefined }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setFieldErrors({});
+
+    if (!form.full_name.trim()) {
+      setFieldErrors({ full_name: "Enter your full name." });
+      return;
+    }
+    if (!isStaff && !form.roll_number.trim()) {
+      setFieldErrors({ roll_number: "Enter your roll number." });
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const body = { ...form };
+      if (isStaff) delete body.roll_number;
+      const updated = await apiFetch("/users/me/onboarding", { method: "POST", body });
+      setUser(updated);
+      router.replace("/");
+    } catch (err) {
+      setFieldErrors(err.fieldErrors || {});
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  if (loading || !user || user.is_onboarded) {
+    return <p className="loading">Loading…</p>;
+  }
+
+  // Small helper so every field is built the same way, with its error linked
+  // to the input for screen readers (aria-describedby).
+  function field(name, label, { hint, ...inputProps } = {}) {
+    const errorId = `${name}-error`;
+    const hintId = `${name}-hint`;
+    return (
+      <div className="field">
+        <label htmlFor={name}>{label}</label>
+        {hint && (
+          <span className="hint" id={hintId}>
+            {hint}
+          </span>
+        )}
+        <input
+          id={name}
+          name={name}
+          value={form[name]}
+          onChange={update}
+          aria-invalid={fieldErrors[name] ? "true" : undefined}
+          aria-describedby={[hint && hintId, fieldErrors[name] && errorId].filter(Boolean).join(" ") || undefined}
+          {...inputProps}
+        />
+        {fieldErrors[name] && (
+          <span className="field-error" id={errorId}>
+            {fieldErrors[name]}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <SiteHeader />
+      <main className="page">
+        <h1>Complete your profile</h1>
+        <p className="lede">
+          {isStaff
+            ? "Your name is shown to students when you handle their items."
+            : "Security guards check your name and roll number against your ID card when you collect an item, so they can't be changed later."}
+        </p>
+
+        {error && (
+          <div className="alert" role="alert">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={submit} noValidate>
+          {field("full_name", "Full name", {
+            hint: isStaff ? undefined : "As printed on your student ID card.",
+            autoComplete: "name",
+            required: true,
+          })}
+          {!isStaff &&
+            field("roll_number", "Roll number", {
+              autoComplete: "off",
+              required: true,
+            })}
+          {field("phone", "Mobile number (optional)", {
+            hint: "10-digit Indian mobile number.",
+            type: "tel",
+            autoComplete: "tel-national",
+            inputMode: "tel",
+          })}
+          <div className="form-row">
+            {field("hall", "Hall (optional)")}
+            {field("room", "Room (optional)")}
+          </div>
+
+          <button type="submit" className="button" disabled={busy}>
+            {busy ? "Saving…" : "Save profile"}
+          </button>
+        </form>
+      </main>
+    </>
+  );
+}

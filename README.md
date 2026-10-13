@@ -13,7 +13,7 @@ all code in this repository was written independently.
 |---|---|
 | Backend | Python, FastAPI, SQLAlchemy, Alembic |
 | Database | PostgreSQL |
-| Frontend | Next.js (React), from Phase 3 |
+| Frontend | Next.js (React) |
 
 ## Project structure
 
@@ -23,28 +23,34 @@ lost-found-iitk/
 │   ├── app/
 │   │   ├── main.py          creates the FastAPI app, registers routers
 │   │   ├── seed.py          inserts starting categories and offices
-│   │   ├── core/            settings (config.py), database connection (database.py)
+│   │   ├── cli.py           command-line tools (make-admin)
+│   │   ├── core/            settings, database, security, permission checks, errors
 │   │   ├── models/          database tables as Python classes
+│   │   ├── schemas/         shapes of API requests and responses (validation)
+│   │   ├── services/        business rules (sign-in, profiles, guards, email)
 │   │   └── routers/         API endpoints, one file per area
+│   ├── tests/               automated tests (run with: pytest)
 │   ├── alembic/             database migrations
 │   ├── alembic.ini          Alembic settings
 │   ├── requirements.txt     Python packages
 │   └── .env.example         template for your local settings
-└── frontend/                Next.js app (Phase 3)
+└── frontend/                Next.js website (see frontend/README.md)
 ```
 
 ## First-time setup (Windows, PyCharm terminal)
 
 Run these from the project folder, `lost-found-iitk`.
 
-1. **Install the Python packages** into the project's `.venv`:
+1. **Install the Python packages** (including test tools) into the project's `.venv`:
    ```
-   pip install -r backend/requirements.txt
+   pip install -r backend/requirements-dev.txt
    ```
 
 2. **Create your settings file.** Copy `backend/.env.example` to
-   `backend/.env`, then open `.env` and set `DB_PASSWORD` to the password
-   of the `lostfound` PostgreSQL user.
+   `backend/.env`, then open `.env` and set:
+   - `DB_PASSWORD`: the password of the `lostfound` PostgreSQL user
+   - `SECRET_KEY`: a long random string, generated with
+     `python -c "import secrets; print(secrets.token_urlsafe(48))"`
    ```
    copy backend\.env.example backend\.env
    ```
@@ -67,11 +73,38 @@ Run these from the project folder, `lost-found-iitk`.
    - Health check: http://127.0.0.1:8000/health
    - Interactive API docs: http://127.0.0.1:8000/docs
 
+6. **Make yourself the admin** (only possible from the command line):
+   ```
+   python -m app.cli make-admin your-id@iitk.ac.in
+   ```
+
+## Running the website
+
+With the API running, open a **second terminal**:
+```
+cd frontend
+npm install
+npm run dev
+```
+Then open http://localhost:3000 and sign in. In development, the sign-in
+code is printed in the terminal running the API.
+
+## Signing in through the API docs (alternative)
+
+1. In `/docs`, call `POST /auth/request-code` with your @iitk.ac.in email.
+2. The code is **printed in the terminal running uvicorn** (no email
+   account needed while `EMAIL_BACKEND=console`).
+3. Call `POST /auth/verify-code` with the email and code. The browser now
+   has a session cookie, so the other endpoints in `/docs` work as you.
+4. Call `POST /users/me/onboarding` to fill in your profile.
+
 ## Everyday commands (from `backend/`)
 
 | Task | Command |
 |---|---|
 | Start the API | `uvicorn app.main:app --reload` |
+| Run the automated tests | `pytest` |
+| Make someone the admin | `python -m app.cli make-admin email@iitk.ac.in` |
 | Apply new migrations | `alembic upgrade head` |
 | Make a migration after changing a model | `alembic revision --autogenerate -m "what changed"` |
 | Undo the last migration | `alembic downgrade -1` |

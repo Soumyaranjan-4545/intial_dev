@@ -7,3 +7,4 @@ sqlalchemy==2.1.4          # talks to the database using Python classes
 alembic==1.20.0            # database migrations (versioned table changes)
 psycopg[binary]==3.3.6     # the PostgreSQL driver SQLAlchemy uses underneath
 pydantic-settings==2.15.0  # reads settings from the .env file
+email-validator==2.3.0     # checks email addresses are well-formed
