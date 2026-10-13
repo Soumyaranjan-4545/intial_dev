@@ -13,6 +13,9 @@ const LINKS = [
   { href: "/found", label: "Found items" },
   { href: "/lost", label: "Lost items" },
   { href: "/my-reports", label: "My reports" },
+  // Extra links shown only to the roles listed.
+  { href: "/staff", label: "Staff desk", roles: ["GUARD", "ADMIN"] },
+  { href: "/admin/guards", label: "Manage guards", roles: ["ADMIN"] },
 ];
 
 export default function SiteHeader() {
@@ -52,7 +55,7 @@ export default function SiteHeader() {
       {user?.is_onboarded && (
         <nav className={styles.nav} aria-label="Main">
           <div className={styles.navInner}>
-            {LINKS.map((link) => (
+            {LINKS.filter((link) => !link.roles || link.roles.includes(user.role)).map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models import ItemKind, ItemStatus
+from app.models import CustodyEventType, ItemKind, ItemStatus
 from app.schemas.reference import CategoryOut, OfficeOut
 from app.schemas.user import OfficeBrief
 
@@ -106,6 +106,29 @@ class ItemPage(BaseModel):
     total_pages: int
 
 
+class PersonBrief(BaseModel):
+    """Who reported an item. Only ever sent to staff."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    full_name: str | None
+    email: str
+    roll_number: str | None
+
+
+class CustodyEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_type: CustodyEventType
+    from_office: OfficeBrief | None
+    to_office: OfficeBrief | None
+    actor_name: str | None
+    note: str | None
+    created_at: datetime
+
+
 class ItemDetailOut(ItemCardOut):
     photo_ids: list[int]
     dropoff_office: OfficeOut | None
@@ -119,3 +142,10 @@ class ItemDetailOut(ItemCardOut):
     can_add_photos: bool
     can_edit_secret: bool
     can_close: bool
+    # ---- Staff only (empty for everyone else) ----
+    reporter: PersonBrief | None
+    received_by_name: str | None
+    custody_events: list[CustodyEventOut]
+    can_receive: bool
+    can_transfer: bool
+    can_dispose: bool

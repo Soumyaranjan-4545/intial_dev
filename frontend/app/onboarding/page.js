@@ -19,6 +19,12 @@ export default function OnboardingPage() {
   const router = useRouter();
   const { user, loading, setUser } = useAuth();
   const [form, setForm] = useState(EMPTY);
+  // A name that's already set (e.g. a former guard) is shown but locked.
+  const nameLocked = Boolean(user?.full_name);
+
+  useEffect(() => {
+    if (user?.full_name) setForm((current) => ({ ...current, full_name: user.full_name }));
+  }, [user?.full_name]);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,9 +126,14 @@ export default function OnboardingPage() {
 
         <form onSubmit={submit} noValidate>
           {field("full_name", "Full name", {
-            hint: isStaff ? undefined : "As printed on your student ID card.",
+            hint: nameLocked
+              ? "Already on your account. Ask the admin if it needs correcting."
+              : isStaff
+                ? undefined
+                : "As printed on your student ID card.",
             autoComplete: "name",
             required: true,
+            readOnly: nameLocked,
           })}
           {!isStaff &&
             field("roll_number", "Roll number", {

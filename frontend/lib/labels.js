@@ -32,3 +32,29 @@ export function todayIso() {
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
 }
+
+/** Custody history: what happened, in words. */
+export const EVENT_LABELS = {
+  RECEIVED: "Received from the finder",
+  REGISTERED: "Registered at the desk (walk-in)",
+  TRANSFERRED: "Moved to another office",
+  RETURNED: "Returned to its owner",
+  DISPOSED: "Disposed of",
+  DONATED: "Donated",
+};
+
+/** "2026-10-13T06:15:56Z" -> "13 Oct 2026, 11:45 am" in the viewer's time zone. */
+export function formatDateTime(isoDateTime) {
+  return new Date(isoDateTime).toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Whole days between a moment and now, e.g. how long an item has been held. */
+export function daysSince(isoDateTime) {
+  return Math.floor((Date.now() - new Date(isoDateTime).getTime()) / 86400000);
+}

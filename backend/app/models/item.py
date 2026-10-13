@@ -133,6 +133,7 @@ class Item(TimestampMixin, Base):
     )
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    received_by: Mapped[User | None] = relationship(foreign_keys=[received_by_id])
 
     # ---- Search ----
     # PostgreSQL keeps this column up to date by itself ("generated column"):
@@ -149,6 +150,13 @@ class Item(TimestampMixin, Base):
             persisted=True,
         ),
         deferred=True,
+    )
+
+    # Oldest first. The model lives in custody.py; the string name avoids a
+    # circular import between the two files.
+    custody_events: Mapped[list["CustodyEvent"]] = relationship(  # noqa: F821
+        back_populates="item", order_by="CustodyEvent.id",
+        cascade="all, delete-orphan", passive_deletes=True,
     )
 
     photos: Mapped[list["ItemPhoto"]] = relationship(

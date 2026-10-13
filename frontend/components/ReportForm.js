@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * The report form, shared by "Report a lost item" and "Hand in a found item".
- * kind="LOST" or kind="FOUND"; found reports also ask for the drop-off
- * office and the optional secret detail.
+ * The report form, shared by three pages:
+ *   kind="LOST"     Report a lost item
+ *   kind="FOUND"    Hand in a found item (finder chooses an office, secret optional)
+ *   kind="WALK_IN"  Staff register an item handed in at the desk (secret required)
  *
  * Submitting happens in two steps:
- *   1. POST /items/lost or /items/found with the text fields (JSON)
+ *   1. POST /items/lost, /items/found or /staff/items/walk-in (JSON)
  *   2. POST /items/{id}/photos once per photo (file upload)
  * Then we open the new item's page.
  */
@@ -14,6 +15,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { useAuth } from "@/components/AuthProvider";
 import { apiFetch, apiUpload } from "@/lib/api";
 import { todayIso } from "@/lib/labels";
 import styles from "./ReportForm.module.css";
@@ -32,16 +34,23 @@ const EMPTY = {
   happened_on: "",
   dropoff_office_id: "",
   secret_detail: "",
+  handed_in_by: "",
 };
 
 export default function ReportForm({ kind }) {
   const router = useRouter();
   const params = useSearchParams();
-  const isFound = kind === "FOUND";
+  const { user } = useAuth();
+  const isWalkIn = kind === "WALK_IN";
+  const isFound = kind !== "LOST"; // found and walk-in both describe a found item
   // "I found this" on the Lost page links here with ?for=<lost item id>.
-  const forLostId = isFound ? params.get("for") : null;
+  const forLostId = kind === "FOUND" ? params.get("for") : null;
 
-  const [form, setForm] = useState(EMPTY);
+  // Walk-ins start at the guard's usual office, if they have one.
+  const [form, setForm] = useState(() => ({
+    ...EMPTY,
+    dropoff_office_id: isWalkIn && user?.office ? String(user.office.id) : "",
+  }));
   const [photos, setPhotos] = useState([]); // [{ file, preview }]
   const [categories, setCategories] = useState([]);
   const [offices, setOffices] = useState([]);
@@ -116,7 +125,12 @@ export default function ReportForm({ kind }) {
     if (form.description.trim().length < 10) problems.description = "Describe it in at least 10 characters.";
     if (form.location_text.trim().length < 3) problems.location_text = "Say where, at least 3 characters.";
     if (!form.happened_on) problems.happened_on = "Choose the date.";
-    if (isFound && !form.dropoff_office_id) problems.dropoff_office_id = "Choose where you'll hand it in.";
+    if (isFound && !form.dropoff_office_id) {
+      problems.dropoff_office_id = isWalkIn ? "Choose the office where it is." : "Choose where you'll hand it in.";
+    }
+    if (isWalkIn && form.secret_detail.trim().length < 3) {
+      problems.secret_detail = "You have the item: note something not visible in photos.";
+    }
     return problems;
   }
 
@@ -140,16 +154,24 @@ export default function ReportForm({ kind }) {
       location_text: form.location_text,
       happened_on: form.happened_on,
     };
-    if (isFound) {
+    if (isWalkIn) {
+      body.office_id = Number(form.dropoff_office_id);
+      body.secret_detail = form.secret_detail;
+      body.handed_in_by = form.handed_in_by;
+    } else if (isFound) {
       body.dropoff_office_id = Number(form.dropoff_office_id);
       body.secret_detail = form.secret_detail;
     }
+    const endpoint = isWalkIn ? "/staff/items/walk-in" : isFound ? "/items/found" : "/items/lost";
 
     let item;
     try {
-      item = await apiFetch(isFound ? "/items/found" : "/items/lost", { method: "POST", body });
+      item = await apiFetch(endpoint, { method: "POST", body });
     } catch (err) {
-      setFieldErrors(err.fieldErrors || {});
+      // The walk-in API calls the office "office_id"; the form calls it dropoff_office_id.
+      const fields = { ...(err.fieldErrors || {}) };
+      if (fields.office_id) fields.dropoff_office_id = fields.office_id;
+      setFieldErrors(fields);
       setError(err.message);
       setBusy(false);
       return;
@@ -242,7 +264,9 @@ export default function ReportForm({ kind }) {
       </fieldset>
 
       <fieldset className={styles.group}>
-        <legend>{isFound ? "Where and when did you find it?" : "Where and when did you lose it?"}</legend>
+        <legend>
+          {isWalkIn ? "Where and when was it found?" : isFound ? "Where and when did you find it?" : "Where and when did you lose it?"}
+        </legend>
         <div className="field">
           <label htmlFor="location_text">Place</label>
           <span className="hint">As exact as you can, e.g. "Library, 2nd floor reading room".</span>
@@ -254,13 +278,22 @@ export default function ReportForm({ kind }) {
           <input id="happened_on" name="happened_on" type="date" max={todayIso()} value={form.happened_on} onChange={update} {...errorProps("happened_on")} />
           {errorText("happened_on")}
         </div>
+        {isWalkIn && (
+          <div className="field">
+            <label htmlFor="handed_in_by">Handed in by (optional)</label>
+            <span className="hint">Who brought it to the desk, e.g. &quot;Canteen staff&quot; or a visitor&apos;s name.</span>
+            <input id="handed_in_by" name="handed_in_by" value={form.handed_in_by} onChange={update} maxLength={120} />
+          </div>
+        )}
       </fieldset>
 
       {isFound && (
         <fieldset className={styles.group} aria-describedby="office-hint">
-          <legend>Where will you hand it in?</legend>
+          <legend>{isWalkIn ? "Which office is it at?" : "Where will you hand it in?"}</legend>
           <p className="hint" id="office-hint">
-            Take the item to this office. It appears on the Found page once a guard receives it.
+            {isWalkIn
+              ? "The office holding the item now. It appears on the Found page as soon as you register it."
+              : "Take the item to this office. It appears on the Found page once a guard receives it."}
           </p>
           <div className={styles.offices}>
             {offices.map((office) => (
@@ -286,13 +319,13 @@ export default function ReportForm({ kind }) {
 
       {isFound && (
         <fieldset className={styles.group}>
-          <legend>Secret identifying detail (optional)</legend>
+          <legend>Secret identifying detail{isWalkIn ? "" : " (optional)"}</legend>
           <div className="field">
             <label htmlFor="secret_detail">Something only the real owner would know</label>
             <span className="hint">
               Not visible in photos: a sticker underneath, the lock-screen picture, what's inside. Only security
-              staff see this; they use it to check who the item really belongs to. If you leave it empty, the
-              guard will add one when you hand it in.
+              staff see this; they use it to check who the item really belongs to.
+              {isWalkIn ? "" : " If you leave it empty, the guard will add one when you hand it in."}
             </span>
             <textarea id="secret_detail" name="secret_detail" value={form.secret_detail} onChange={update} maxLength={300} {...errorProps("secret_detail")} />
             {errorText("secret_detail")}
@@ -328,7 +361,7 @@ export default function ReportForm({ kind }) {
       </fieldset>
 
       <button type="submit" className="button" disabled={busy}>
-        {busy ? "Submitting…" : isFound ? "Submit found item" : "Submit lost item"}
+        {busy ? "Submitting…" : isWalkIn ? "Register item" : isFound ? "Submit found item" : "Submit lost item"}
       </button>
     </form>
   );

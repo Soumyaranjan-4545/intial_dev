@@ -9,7 +9,9 @@ from sqlalchemy import select
 
 from app.core.clock import today
 from app.core.config import get_settings
-from app.models import Category, Item, ItemStatus, Office, UserRole
+from app.models import Category, Item, ItemStatus, Office, User, UserRole
+from app.schemas.staff import ReceiveIn
+from app.services import custody
 from app.services import items as items_service
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 200
@@ -68,7 +70,14 @@ def found_body(place, **changes):
 
 
 def receive(db, item_id, secret=None):
-    items_service.receive_for_testing(db, db.get(Item, item_id), secret)
+    """A guard receives the item at the office the finder chose."""
+    guard = db.scalar(select(User).where(User.email == "desk.guard@iitk.ac.in"))
+    if guard is None:
+        guard = User(email="desk.guard@iitk.ac.in", role=UserRole.GUARD, full_name="Desk Guard")
+        db.add(guard)
+        db.flush()
+    item = db.get(Item, item_id)
+    custody.receive_item(db, item, guard, ReceiveIn(office_id=item.dropoff_office_id, secret_detail=secret))
 
 
 # ---------------- Reporting ----------------
@@ -327,7 +336,7 @@ def test_photos_of_hidden_items_are_hidden(person, place):
     assert other.get(f"/items/{item_id}/photos/{photo_id}").status_code == 404
 
 
-def test_receive_command_moves_item_to_dropoff_office(person, place, db):
+def test_receiving_moves_item_to_dropoff_office(person, place, db):
     item_id = person().post("/items/found", json=found_body(place, secret_detail="x")).json()["id"]
     receive(db, item_id)
     item = db.scalar(select(Item).where(Item.id == item_id))

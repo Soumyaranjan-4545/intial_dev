@@ -3,11 +3,6 @@
 Make someone the admin:
     python -m app.cli make-admin someone@iitk.ac.in
 
-Mark a found item as handed in at its office (TEMPORARY, for testing until
-Phase 4 adds the guard's drop-off screen):
-    python -m app.cli receive-item 12
-    python -m app.cli receive-item 12 --secret "Red keychain inside the front pocket"
-
 Create sample items to try the Found/Lost pages and page numbers:
     python -m app.cli demo-items --count 30
 
@@ -26,6 +21,8 @@ from app.core.database import SessionLocal
 from app.core.errors import AppError
 from app.models import (
     Category,
+    CustodyEvent,
+    CustodyEventType,
     Item,
     ItemKind,
     ItemStatus,
@@ -34,7 +31,6 @@ from app.models import (
     User,
     UserRole,
 )
-from app.services import items as items_service
 from app.services.auth import check_allowed_domain, normalize_email
 
 
@@ -48,15 +44,6 @@ def make_admin(raw_email: str) -> None:
             db.add(user)
         user.role = UserRole.ADMIN
     print(f"{email} is now the admin. They can sign in with that email.")
-
-
-def receive_item(item_id: int, secret: str | None) -> None:
-    with SessionLocal() as db:
-        item = db.get(Item, item_id)
-        if item is None:
-            raise SystemExit(f"Error: no item with id {item_id}.")
-        items_service.receive_for_testing(db, item, secret)
-        print(f"{item.ref} is now at {item.current_office.name} and shown on the Found page.")
 
 
 DEMO_ITEMS = [
@@ -111,6 +98,9 @@ def demo_items(count: int) -> None:
                 item.secret_detail = "Demo secret detail"
                 item.secret_detail_by = SecretSource.GUARD
                 item.received_at = now()
+                item.custody_events.append(
+                    CustodyEvent(event_type=CustodyEventType.REGISTERED, to_office=office, note="Demo item")
+                )
             else:
                 item.status = ItemStatus.OPEN
             db.add(item)
@@ -124,10 +114,6 @@ def main() -> None:
     admin_cmd = commands.add_parser("make-admin", help="give a user the admin role")
     admin_cmd.add_argument("email")
 
-    receive_cmd = commands.add_parser("receive-item", help="(testing) mark a found item as handed in")
-    receive_cmd.add_argument("item_id", type=int)
-    receive_cmd.add_argument("--secret", help="secret identifying detail, if the finder gave none")
-
     demo_cmd = commands.add_parser("demo-items", help="create sample items")
     demo_cmd.add_argument("--count", type=int, default=30)
 
@@ -135,8 +121,6 @@ def main() -> None:
     try:
         if args.command == "make-admin":
             make_admin(args.email)
-        elif args.command == "receive-item":
-            receive_item(args.item_id, args.secret)
         elif args.command == "demo-items":
             demo_items(args.count)
     except AppError as error:

@@ -11,6 +11,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
+import StaffPanel from "@/components/StaffPanel";
 import { apiFetch, apiUpload, photoUrl } from "@/lib/api";
 import { STATUS_LABELS, formatDate } from "@/lib/labels";
 import styles from "./item.module.css";
@@ -67,7 +68,11 @@ function ItemDetail() {
     <article>
       {params.get("new") && (
         <div className="success" role="status">
-          {isFound ? "Thanks for reporting it." : "Your lost item report is saved."}
+          {!isFound
+            ? "Your lost item report is saved."
+            : item.status === "IN_CUSTODY"
+              ? "Item registered. It's on the Found page now."
+              : "Thanks for reporting it."}
           {photosFailed > 0 && ` ${photosFailed} photo(s) couldn't be uploaded; you can add them below.`}
         </div>
       )}
@@ -165,9 +170,12 @@ function ItemDetail() {
       <h2>Description</h2>
       <p className={styles.description}>{item.description}</p>
 
-      {(item.can_edit_secret || (isStaff && isFound)) && (
+      {/* While receiving, the secret is checked in the Receive form instead. */}
+      {(item.can_edit_secret || (isStaff && isFound)) && !item.can_receive && (
         <SecretDetail item={item} onSaved={setItem} />
       )}
+
+      {isStaff && isFound && <StaffPanel item={item} onChanged={setItem} />}
 
       {item.can_add_photos && <AddPhoto itemId={item.id} onAdded={setItem} />}
 
@@ -216,7 +224,7 @@ function SecretDetail({ item, onSaved }) {
     <section className={styles.secret} aria-labelledby="secret-heading">
       <h2 id="secret-heading">Secret identifying detail</h2>
       <p className={styles.small}>
-        Only security staff{item.can_edit_secret ? " and you (until you hand it in)" : ""} can see this. It's
+        Only security staff{item.is_mine && item.status === "AWAITING_DROPOFF" ? " and you (until you hand it in)" : ""} can see this. It's
         used to check who the item really belongs to.
       </p>
       {editing ? (

@@ -109,12 +109,13 @@ def can_see_secret(item: Item, user: User) -> bool:
 
 
 def can_edit_secret(item: Item, user: User) -> bool:
-    """Only the finder, only before drop-off. After that, guards handle it."""
-    return (
-        item.kind == ItemKind.FOUND
-        and item.status == ItemStatus.AWAITING_DROPOFF
-        and item.reporter_id == user.id
-    )
+    """The finder, only before drop-off. Security staff, while the item is
+    waiting for drop-off or held at an office."""
+    if item.kind != ItemKind.FOUND:
+        return False
+    if user.is_staff:
+        return item.status in (ItemStatus.AWAITING_DROPOFF, *HELD_STATUSES)
+    return item.status == ItemStatus.AWAITING_DROPOFF and item.reporter_id == user.id
 
 
 def can_add_photos(item: Item, user: User) -> bool:
@@ -124,8 +125,10 @@ def can_add_photos(item: Item, user: User) -> bool:
         # The reporter can add photos while their report is still active
         # and, for found items, before a guard has taken it in.
         return item.status in (ItemStatus.OPEN, ItemStatus.AWAITING_DROPOFF)
-    # Guards may photograph a found item while it's at an office.
-    return user.is_staff and item.status in HELD_STATUSES
+    # Guards may photograph a found item at drop-off or while it's at an office.
+    return user.is_staff and item.kind == ItemKind.FOUND and item.status in (
+        ItemStatus.AWAITING_DROPOFF, *HELD_STATUSES
+    )
 
 
 def can_close(item: Item, user: User) -> bool:
@@ -140,9 +143,13 @@ def get_visible_item(db: Session, item_id: int, user: User) -> Item:
 
 
 def detail_for(item: Item, user: User) -> dict:
-    """Build the detail response. The secret detail is only copied in for
-    people allowed to see it; for everyone else the field stays empty."""
+    """Build the detail response. The secret detail, the reporter and the
+    custody history are only copied in for people allowed to see them; for
+    everyone else those fields stay empty."""
+    from app.services import custody  # imported here to avoid a circular import
+
     show_secret = can_see_secret(item, user)
+    staff = user.is_staff
     return {
         **{field: getattr(item, field) for field in (
             "id", "ref", "kind", "status", "title", "description", "category",
@@ -157,6 +164,13 @@ def detail_for(item: Item, user: User) -> dict:
         "can_add_photos": can_add_photos(item, user),
         "can_edit_secret": can_edit_secret(item, user),
         "can_close": can_close(item, user),
+        # ---- Staff only ----
+        "reporter": item.reporter if staff else None,
+        "received_by_name": item.received_by.full_name if staff and item.received_by else None,
+        "custody_events": custody.history(item) if staff else [],
+        "can_receive": custody.can_receive(item, user),
+        "can_transfer": custody.can_transfer(item, user),
+        "can_dispose": custody.can_dispose(item, user),
     }
 
 
@@ -165,9 +179,15 @@ def detail_for(item: Item, user: User) -> dict:
 
 def update_secret(db: Session, item: Item, user: User, data: SecretDetailIn) -> Item:
     if not can_edit_secret(item, user):
-        raise forbidden("The secret detail can only be changed by the finder before drop-off.")
+        raise forbidden("The secret detail can only be changed by the finder before drop-off, or by security staff.")
+    if not data.secret_detail and item.status in HELD_STATUSES:
+        # Items at an office always need one: it's how claims are checked.
+        raise bad_request("An item held at an office must keep a secret identifying detail.")
     item.secret_detail = data.secret_detail
-    item.secret_detail_by = SecretSource.FINDER if data.secret_detail else None
+    if not data.secret_detail:
+        item.secret_detail_by = None
+    else:
+        item.secret_detail_by = SecretSource.GUARD if user.is_staff else SecretSource.FINDER
     db.commit()
     return item
 
@@ -202,30 +222,6 @@ def add_photo(db: Session, item: Item, user: User, data: bytes, content_type: st
         raise
     db.refresh(item)
     return photo
-
-
-def receive_for_testing(db: Session, item: Item, secret_detail: str | None) -> Item:
-    """TEMPORARY until Phase 4 builds the guard's drop-off screen: mark a
-    found item as received at the office the finder chose."""
-    if item.kind != ItemKind.FOUND or item.status != ItemStatus.AWAITING_DROPOFF:
-        raise bad_request("Only found items waiting for drop-off can be received.")
-    # Load the office BEFORE changing anything. Loading it runs a query, and
-    # SQLAlchemy saves pending changes first ("autoflush"); if the status were
-    # already IN_CUSTODY with no office, the database would rightly refuse it.
-    office = item.dropoff_office
-    if secret_detail:
-        item.secret_detail = secret_detail
-        item.secret_detail_by = SecretSource.GUARD
-    if not item.secret_detail:
-        # Same rule the guard screen will enforce: no secret, no receipt.
-        raise bad_request("Record a secret identifying detail before receiving the item.")
-    item.status = ItemStatus.IN_CUSTODY
-    # Set the relationship (not just the id column), so the item object in
-    # memory points at the new office straight away.
-    item.current_office = office
-    item.received_at = now()
-    db.commit()
-    return item
 
 
 # ---------------- Listing with filters and pages ----------------

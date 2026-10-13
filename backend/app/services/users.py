@@ -30,7 +30,10 @@ def complete_onboarding(db: Session, user: User, data: OnboardingIn) -> User:
             raise conflict("This roll number is already registered to another account.")
         user.roll_number = data.roll_number
 
-    user.full_name = data.full_name
+    # A name that's already set stays locked. This happens when a guard is
+    # removed and becomes a student: they only need to add a roll number.
+    if not user.full_name:
+        user.full_name = data.full_name
     user.phone = data.phone
     user.hall = data.hall
     user.room = data.room

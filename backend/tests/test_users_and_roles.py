@@ -141,3 +141,19 @@ def test_admin_cannot_be_turned_into_a_guard(sign_in, make_user):
     admin = signed_in_admin(sign_in, make_user)
     response = admin.post("/admin/guards", json={"email": "admin@iitk.ac.in"})
     assert response.status_code == 400
+
+
+def test_removed_guard_adds_roll_number_but_keeps_name(sign_in, make_user):
+    make_user("admin@iitk.ac.in", role=UserRole.ADMIN, full_name="Admin")
+    admin = sign_in("admin@iitk.ac.in")
+    guard_id = admin.post("/admin/guards", json={"email": "guard1@iitk.ac.in"}).json()["id"]
+    guard = sign_in("guard1@iitk.ac.in")
+    guard.post("/users/me/onboarding", json={"full_name": "Ramesh Kumar"})
+
+    admin.delete(f"/admin/guards/{guard_id}")
+    me = guard.get("/auth/me").json()
+    assert me["role"] == "STUDENT" and me["is_onboarded"] is False  # needs a roll number now
+
+    done = guard.post("/users/me/onboarding", json={"full_name": "Someone Else", "roll_number": "230555"})
+    assert done.json()["full_name"] == "Ramesh Kumar"  # name stays locked
+    assert done.json()["is_onboarded"] is True
