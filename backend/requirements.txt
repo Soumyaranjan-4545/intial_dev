@@ -8,3 +8,5 @@ alembic==1.20.0            # database migrations (versioned table changes)
 psycopg[binary]==3.3.6     # the PostgreSQL driver SQLAlchemy uses underneath
 pydantic-settings==2.15.0  # reads settings from the .env file
 email-validator==2.3.0     # checks email addresses are well-formed
+python-multipart==0.0.32   # lets FastAPI receive file uploads (item photos)
+tzdata==2026.5             # time-zone data, so "today" is India's date even on Windows

@@ -27,9 +27,10 @@ lost-found-iitk/
 │   │   ├── core/            settings, database, security, permission checks, errors
 │   │   ├── models/          database tables as Python classes
 │   │   ├── schemas/         shapes of API requests and responses (validation)
-│   │   ├── services/        business rules (sign-in, profiles, guards, email)
+│   │   ├── services/        business rules (sign-in, profiles, guards, items, photos, email)
 │   │   └── routers/         API endpoints, one file per area
 │   ├── tests/               automated tests (run with: pytest)
+│   ├── uploads/             item photos saved here (not in Git)
 │   ├── alembic/             database migrations
 │   ├── alembic.ini          Alembic settings
 │   ├── requirements.txt     Python packages
@@ -105,6 +106,8 @@ code is printed in the terminal running the API.
 | Start the API | `uvicorn app.main:app --reload` |
 | Run the automated tests | `pytest` |
 | Make someone the admin | `python -m app.cli make-admin email@iitk.ac.in` |
+| Add sample items (to try filters and pages) | `python -m app.cli demo-items --count 30` |
+| Mark a found item as handed in (temporary, until the guard screen in Phase 4) | `python -m app.cli receive-item 12` |
 | Apply new migrations | `alembic upgrade head` |
 | Make a migration after changing a model | `alembic revision --autogenerate -m "what changed"` |
 | Undo the last migration | `alembic downgrade -1` |

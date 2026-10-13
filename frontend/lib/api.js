@@ -41,16 +41,14 @@ function readError(status, body) {
   return new ApiError(status, "Something went wrong. Please try again.");
 }
 
-export async function apiFetch(path, { method = "GET", body } = {}) {
+const OFFLINE_MESSAGE = "Can't reach the server. Check that the backend is running.";
+
+async function handle(request) {
   let response;
   try {
-    response = await fetch(`/api${path}`, {
-      method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    response = await request;
   } catch {
-    throw new ApiError(0, "Can't reach the server. Check that the backend is running.");
+    throw new ApiError(0, OFFLINE_MESSAGE);
   }
 
   if (response.status === 204) return null; // success with no content (e.g. sign out)
@@ -58,10 +56,44 @@ export async function apiFetch(path, { method = "GET", body } = {}) {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     // The proxy answers 500 with no JSON when FastAPI isn't running.
-    if (data === null && response.status >= 500) {
-      throw new ApiError(response.status, "Can't reach the server. Check that the backend is running.");
-    }
+    if (data === null && response.status >= 500) throw new ApiError(response.status, OFFLINE_MESSAGE);
     throw readError(response.status, data);
   }
   return data;
+}
+
+/** JSON requests. `query` becomes ?key=value, skipping empty values. */
+export function apiFetch(path, { method = "GET", body, query } = {}) {
+  let url = `/api${path}`;
+  if (query) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && value !== "") params.set(key, value);
+    }
+    const text = params.toString();
+    if (text) url += `?${text}`;
+  }
+  return handle(
+    fetch(url, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  );
+}
+
+/**
+ * File uploads use "multipart/form-data" instead of JSON. We don't set the
+ * Content-Type header ourselves: the browser adds it, including the
+ * boundary marker that separates the parts.
+ */
+export function apiUpload(path, file, fieldName = "file") {
+  const form = new FormData();
+  form.append(fieldName, file);
+  return handle(fetch(`/api${path}`, { method: "POST", body: form }));
+}
+
+/** Address of an item photo (served by the backend with permission checks). */
+export function photoUrl(itemId, photoId) {
+  return `/api/items/${itemId}/photos/${photoId}`;
 }

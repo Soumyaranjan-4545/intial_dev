@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # ---- App rules ----
     allowed_email_domain: str = "iitk.ac.in"
     frontend_origin: str = "http://localhost:3000"
+    # Dates like "found on" are in campus time, not the server's own zone.
+    timezone: str = "Asia/Kolkata"
+
+    # ---- Item photos ----
+    upload_dir: Path = BACKEND_DIR / "uploads"
+    max_photos_per_item: int = 3
+    max_photo_mb: int = 5
 
     # ---- Email ----
     email_backend: Literal["console", "smtp"] = "console"

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import engine, get_db
 from app.main import app
-from app.models import LoginCode, User, UserRole, UserSession
+from app.models import Item, LoginCode, User, UserRole, UserSession
 from app.services import email as email_service
 
 
@@ -30,6 +30,7 @@ def db():
     # Start every test from empty user tables, so your own development data
     # (accounts, recent login codes) can never affect a test. This happens
     # inside the transaction, so the rollback below brings your data back.
+    session.execute(delete(Item))  # photos go too (ON DELETE CASCADE)
     session.execute(delete(UserSession))
     session.execute(delete(LoginCode))
     session.execute(delete(User))

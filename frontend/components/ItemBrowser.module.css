@@ -1,0 +1,51 @@
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 1fr) auto;
+  gap: 0 1rem;
+  align-items: end;
+  margin: 1rem 0 0.5rem;
+}
+
+/* The button lines up with the inputs, not their labels. */
+.filters > button {
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 40rem) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+.count {
+  min-height: 1.5rem;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
+/* As many columns as fit, each at least 15rem wide. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1.25rem;
+}
+
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.empty p {
+  margin: 0 auto 1rem;
+}

@@ -1,0 +1,85 @@
+.form {
+  margin-top: 1.5rem;
+}
+
+/* Each part of the form is a fieldset: a group with its own heading (legend),
+   which screen readers announce before each field in the group. */
+.group {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0 0 1.5rem;
+  padding: 1.25rem 0 0;
+}
+
+.group legend {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 0.75rem;
+  float: left; /* keeps the legend inside the group's layout */
+  width: 100%;
+}
+
+.group legend + * {
+  clear: both;
+}
+
+.offices {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.office {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+
+.office:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.office input {
+  margin-top: 0.3rem;
+  accent-color: var(--accent);
+}
+
+.officeInfo {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.previews li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.previews img {
+  width: 8rem;
+  height: 6rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+
+.fileLabel {
+  margin-bottom: 0.25rem;
+}

@@ -1,0 +1,111 @@
+"""Item endpoints: report, list, view, photos, and small updates.
+
+Every endpoint needs a signed-in user who has completed their profile
+(OnboardedUser). The rules themselves live in services/items.py.
+"""
+
+from typing import Annotated
+
+from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi.responses import FileResponse
+
+from app.core.deps import DbSession, OnboardedUser
+from app.core.errors import not_found
+from app.models import ItemKind, ItemPhoto
+from app.schemas.item import (
+    CloseLostIn,
+    FoundItemIn,
+    ItemDetailOut,
+    ItemPage,
+    LostItemIn,
+    SecretDetailIn,
+)
+from app.services import items as items_service
+from app.services import storage
+
+router = APIRouter(prefix="/items", tags=["items"])
+
+# Query parameters, with limits FastAPI checks before our code runs.
+# ge = "greater than or equal", le = "less than or equal".
+PageNumber = Annotated[int, Query(ge=1, description="Page to show, starting at 1")]
+PageSize = Annotated[int, Query(ge=1, le=48, description="Items per page (max 48)")]
+
+
+@router.get("", response_model=ItemPage)
+def list_items(
+    user: OnboardedUser,
+    db: DbSession,
+    kind: ItemKind,
+    category: Annotated[str | None, Query(max_length=60, description="Category slug, e.g. electronics")] = None,
+    q: Annotated[str | None, Query(max_length=100, description="Words to search for")] = None,
+    page: PageNumber = 1,
+    page_size: PageSize = 12,
+):
+    """The Found page (kind=FOUND) or the Lost page (kind=LOST)."""
+    search = q.strip() if q else None
+    return items_service.list_public(db, kind, category, search or None, page, page_size)
+
+
+@router.get("/mine", response_model=ItemPage)
+def my_items(user: OnboardedUser, db: DbSession, page: PageNumber = 1, page_size: PageSize = 12):
+    """Everything I've reported, in any status."""
+    return items_service.list_mine(db, user, page, page_size)
+
+
+@router.post("/lost", response_model=ItemDetailOut, status_code=status.HTTP_201_CREATED)
+def report_lost(data: LostItemIn, user: OnboardedUser, db: DbSession):
+    item = items_service.report_lost(db, user, data)
+    return items_service.detail_for(item, user)
+
+
+@router.post("/found", response_model=ItemDetailOut, status_code=status.HTTP_201_CREATED)
+def report_found(data: FoundItemIn, user: OnboardedUser, db: DbSession):
+    """The item stays hidden from the Found page until a guard receives it."""
+    item = items_service.report_found(db, user, data)
+    return items_service.detail_for(item, user)
+
+
+@router.get("/{item_id}", response_model=ItemDetailOut)
+def item_detail(item_id: int, user: OnboardedUser, db: DbSession):
+    item = items_service.get_visible_item(db, item_id, user)
+    return items_service.detail_for(item, user)
+
+
+@router.put("/{item_id}/secret-detail", response_model=ItemDetailOut)
+def update_secret(item_id: int, data: SecretDetailIn, user: OnboardedUser, db: DbSession):
+    """The finder can change the secret detail until drop-off."""
+    item = items_service.get_visible_item(db, item_id, user)
+    items_service.update_secret(db, item, user, data)
+    return items_service.detail_for(item, user)
+
+
+@router.post("/{item_id}/close", response_model=ItemDetailOut)
+def close_lost(item_id: int, data: CloseLostIn, user: OnboardedUser, db: DbSession):
+    """Close my lost report: RECOVERED (got it back) or CLOSED (stopped looking)."""
+    item = items_service.get_visible_item(db, item_id, user)
+    items_service.close_lost(db, item, user, data)
+    return items_service.detail_for(item, user)
+
+
+@router.post("/{item_id}/photos", response_model=ItemDetailOut, status_code=status.HTTP_201_CREATED)
+async def upload_photo(item_id: int, user: OnboardedUser, db: DbSession, file: UploadFile = File()):
+    """Add one photo (JPEG, PNG or WebP). Call once per photo."""
+    item = items_service.get_visible_item(db, item_id, user)
+    data, content_type, extension = await storage.read_image(file)
+    items_service.add_photo(db, item, user, data, content_type, extension)
+    return items_service.detail_for(item, user)
+
+
+@router.get("/{item_id}/photos/{photo_id}")
+def get_photo(item_id: int, photo_id: int, user: OnboardedUser, db: DbSession):
+    """Photos are served through the API (not as public files), so the same
+    "who may see this item" rule applies to its photos."""
+    item = items_service.get_visible_item(db, item_id, user)
+    photo = db.get(ItemPhoto, photo_id)
+    if photo is None or photo.item_id != item.id:
+        raise not_found("No photo with that number.")
+    path = storage.path_for(photo.stored_name)
+    if not path.exists():
+        raise not_found("The photo file is missing.")
+    # private: the browser may cache it, but shared caches must not.
+    return FileResponse(path, media_type=photo.content_type, headers={"Cache-Control": "private, max-age=3600"})

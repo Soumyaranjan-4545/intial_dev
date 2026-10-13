@@ -1,0 +1,330 @@
+"""Business rules for lost and found items.
+
+Who can see an item?
+  - Items on the public pages (found items at an office, open lost reports):
+    every signed-in user.
+  - Anything else (a found item not yet handed in, a closed lost report...):
+    only the person who reported it, and security staff.
+  Everyone else gets "not found" (404), not "forbidden" (403), so the API
+  doesn't even reveal that the item exists.
+
+Who can see the secret detail of a found item?
+  - Security staff, always (they use it to check claims).
+  - The finder, only until a guard receives the item.
+  - Nobody else, ever.
+"""
+
+import math
+import re
+from datetime import timedelta
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
+
+from app.core.clock import now, today
+from app.core.config import get_settings
+from app.core.errors import bad_request, forbidden, not_found
+from app.models import (
+    Category,
+    Item,
+    ItemKind,
+    ItemPhoto,
+    ItemStatus,
+    Office,
+    SecretSource,
+    User,
+)
+from app.models.item import HELD_STATUSES, PUBLIC_STATUSES
+from app.schemas.item import CloseLostIn, FoundItemIn, LostItemIn, SecretDetailIn
+from app.services import storage
+
+MAX_DAYS_AGO = 365  # reports about things lost more than a year ago are refused
+
+
+# ---------------- Checks shared by both report forms ----------------
+
+
+def _check_common(db: Session, data: LostItemIn | FoundItemIn) -> None:
+    category = db.get(Category, data.category_id)
+    if category is None or not category.is_active:
+        raise bad_request("Choose a category from the list.")
+    if data.happened_on > today():
+        raise bad_request("The date can't be in the future.")
+    if data.happened_on < today() - timedelta(days=MAX_DAYS_AGO):
+        raise bad_request("The date can't be more than a year ago.")
+
+
+# ---------------- Reporting ----------------
+
+
+def report_lost(db: Session, user: User, data: LostItemIn) -> Item:
+    _check_common(db, data)
+    item = Item(
+        kind=ItemKind.LOST,
+        status=ItemStatus.OPEN,
+        reporter_id=user.id,
+        **data.model_dump(),
+    )
+    db.add(item)
+    db.commit()
+    return item
+
+
+def report_found(db: Session, user: User, data: FoundItemIn) -> Item:
+    _check_common(db, data)
+    office = db.get(Office, data.dropoff_office_id)
+    if office is None or not office.is_active:
+        raise bad_request("Choose an open security office.")
+
+    item = Item(
+        kind=ItemKind.FOUND,
+        # Not shown publicly until a guard confirms they have it.
+        status=ItemStatus.AWAITING_DROPOFF,
+        reporter_id=user.id,
+        secret_detail_by=SecretSource.FINDER if data.secret_detail else None,
+        **data.model_dump(),
+    )
+    db.add(item)
+    db.commit()
+    return item
+
+
+# ---------------- Who may see and do what ----------------
+
+
+def is_public(item: Item) -> bool:
+    return item.status in PUBLIC_STATUSES[item.kind]
+
+
+def can_view(item: Item, user: User) -> bool:
+    return is_public(item) or user.is_staff or item.reporter_id == user.id
+
+
+def can_see_secret(item: Item, user: User) -> bool:
+    if item.kind != ItemKind.FOUND:
+        return False
+    if user.is_staff:
+        return True
+    return item.reporter_id == user.id and item.status == ItemStatus.AWAITING_DROPOFF
+
+
+def can_edit_secret(item: Item, user: User) -> bool:
+    """Only the finder, only before drop-off. After that, guards handle it."""
+    return (
+        item.kind == ItemKind.FOUND
+        and item.status == ItemStatus.AWAITING_DROPOFF
+        and item.reporter_id == user.id
+    )
+
+
+def can_add_photos(item: Item, user: User) -> bool:
+    if len(item.photos) >= get_settings().max_photos_per_item:
+        return False
+    if item.reporter_id == user.id:
+        # The reporter can add photos while their report is still active
+        # and, for found items, before a guard has taken it in.
+        return item.status in (ItemStatus.OPEN, ItemStatus.AWAITING_DROPOFF)
+    # Guards may photograph a found item while it's at an office.
+    return user.is_staff and item.status in HELD_STATUSES
+
+
+def can_close(item: Item, user: User) -> bool:
+    return item.kind == ItemKind.LOST and item.status == ItemStatus.OPEN and item.reporter_id == user.id
+
+
+def get_visible_item(db: Session, item_id: int, user: User) -> Item:
+    item = db.get(Item, item_id)
+    if item is None or not can_view(item, user):
+        raise not_found("No item with that number.")
+    return item
+
+
+def detail_for(item: Item, user: User) -> dict:
+    """Build the detail response. The secret detail is only copied in for
+    people allowed to see it; for everyone else the field stays empty."""
+    show_secret = can_see_secret(item, user)
+    return {
+        **{field: getattr(item, field) for field in (
+            "id", "ref", "kind", "status", "title", "description", "category",
+            "colour", "brand", "location_text", "happened_on", "created_at",
+            "current_office", "cover_photo_id", "dropoff_office", "received_at",
+        )},
+        "current_office_full": item.current_office,
+        "photo_ids": [photo.id for photo in item.photos],
+        "secret_detail": item.secret_detail if show_secret else None,
+        "secret_detail_by": item.secret_detail_by if show_secret else None,
+        "is_mine": item.reporter_id == user.id,
+        "can_add_photos": can_add_photos(item, user),
+        "can_edit_secret": can_edit_secret(item, user),
+        "can_close": can_close(item, user),
+    }
+
+
+# ---------------- Changes after reporting ----------------
+
+
+def update_secret(db: Session, item: Item, user: User, data: SecretDetailIn) -> Item:
+    if not can_edit_secret(item, user):
+        raise forbidden("The secret detail can only be changed by the finder before drop-off.")
+    item.secret_detail = data.secret_detail
+    item.secret_detail_by = SecretSource.FINDER if data.secret_detail else None
+    db.commit()
+    return item
+
+
+def close_lost(db: Session, item: Item, user: User, data: CloseLostIn) -> Item:
+    if not can_close(item, user):
+        raise forbidden("Only the person who reported it can close an open lost report.")
+    item.status = ItemStatus(data.outcome)
+    db.commit()
+    return item
+
+
+def add_photo(db: Session, item: Item, user: User, data: bytes, content_type: str, extension: str) -> ItemPhoto:
+    if not can_add_photos(item, user):
+        if len(item.photos) >= get_settings().max_photos_per_item:
+            raise bad_request(f"An item can have at most {get_settings().max_photos_per_item} photos.")
+        raise forbidden("You can't add photos to this item now.")
+
+    stored_name = storage.save(data, extension)
+    photo = ItemPhoto(
+        item_id=item.id,
+        stored_name=stored_name,
+        content_type=content_type,
+        size_bytes=len(data),
+        uploaded_by_id=user.id,
+    )
+    db.add(photo)
+    try:
+        db.commit()
+    except Exception:
+        storage.delete(stored_name)  # don't leave an orphan file behind
+        raise
+    db.refresh(item)
+    return photo
+
+
+def receive_for_testing(db: Session, item: Item, secret_detail: str | None) -> Item:
+    """TEMPORARY until Phase 4 builds the guard's drop-off screen: mark a
+    found item as received at the office the finder chose."""
+    if item.kind != ItemKind.FOUND or item.status != ItemStatus.AWAITING_DROPOFF:
+        raise bad_request("Only found items waiting for drop-off can be received.")
+    # Load the office BEFORE changing anything. Loading it runs a query, and
+    # SQLAlchemy saves pending changes first ("autoflush"); if the status were
+    # already IN_CUSTODY with no office, the database would rightly refuse it.
+    office = item.dropoff_office
+    if secret_detail:
+        item.secret_detail = secret_detail
+        item.secret_detail_by = SecretSource.GUARD
+    if not item.secret_detail:
+        # Same rule the guard screen will enforce: no secret, no receipt.
+        raise bad_request("Record a secret identifying detail before receiving the item.")
+    item.status = ItemStatus.IN_CUSTODY
+    # Set the relationship (not just the id column), so the item object in
+    # memory points at the new office straight away.
+    item.current_office = office
+    item.received_at = now()
+    db.commit()
+    return item
+
+
+# ---------------- Listing with filters and pages ----------------
+
+
+# A word, optionally starting with "-" to exclude it. Only letters and digits
+# are kept, so nothing the user types can break the query syntax.
+_SEARCH_WORD = re.compile(r"(-?)([^\W_]+)")
+MIN_PREFIX_LENGTH = 2
+
+
+def build_search_query(text: str) -> str | None:
+    """Turn what the user typed into a PostgreSQL search query.
+
+    "sci calc -broken"  ->  "sci:* & calc:* & !broken"
+
+    - Each word matches as a prefix (":*"), so "sci" finds "scientific".
+    - All words must match ("&").
+    - "-word" excludes items containing that word ("!").
+    - Single letters are skipped: "a:*" would match almost everything.
+    Returns None if nothing usable was typed.
+    """
+    parts = []
+    for minus, word in _SEARCH_WORD.findall(text.lower()):
+        if len(word) < MIN_PREFIX_LENGTH:
+            continue
+        parts.append(f"!{word}" if minus else f"{word}:*")
+    return " & ".join(parts) or None
+
+
+def list_public(
+    db: Session,
+    kind: ItemKind,
+    category_slug: str | None,
+    search: str | None,
+    page: int,
+    page_size: int,
+) -> dict:
+    """One page of the Found or Lost page.
+
+    1. Build the filters (kind, public statuses, category, search words).
+    2. Count every matching item, so the page knows how many pages exist.
+    3. Fetch only this page's rows: ORDER BY newest, then OFFSET/LIMIT.
+    Both queries use the same filters, so the count always matches.
+    """
+    filters = [Item.kind == kind, Item.status.in_(PUBLIC_STATUSES[kind])]
+
+    if category_slug:
+        category_id = db.scalar(select(Category.id).where(Category.slug == category_slug))
+        if category_id is None:
+            return _page([], 0, page, page_size)  # unknown category: nothing matches
+        filters.append(Item.category_id == category_id)
+
+    tsquery = build_search_query(search) if search else None
+    if tsquery:
+        # @@ means "does the item's text match the query". to_tsquery also
+        # removes word endings, so "calculators" still finds "calculator".
+        filters.append(Item.search_vector.op("@@")(func.to_tsquery("english", tsquery)))
+
+    total = db.scalar(select(func.count()).select_from(Item).where(*filters))
+
+    rows = db.scalars(
+        select(Item)
+        .where(*filters)
+        # id breaks ties, so two items created at the same moment never swap
+        # places between pages.
+        .order_by(Item.created_at.desc(), Item.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        # Load photos, categories and offices for all rows in a few queries,
+        # instead of one extra query per item (the "N+1 problem").
+        .options(
+            selectinload(Item.photos),
+            selectinload(Item.category),
+            selectinload(Item.current_office),
+        )
+    ).all()
+    return _page(list(rows), total, page, page_size)
+
+
+def list_mine(db: Session, user: User, page: int, page_size: int) -> dict:
+    filters = [Item.reporter_id == user.id]
+    total = db.scalar(select(func.count()).select_from(Item).where(*filters))
+    rows = db.scalars(
+        select(Item)
+        .where(*filters)
+        .order_by(Item.created_at.desc(), Item.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .options(selectinload(Item.photos), selectinload(Item.category), selectinload(Item.current_office))
+    ).all()
+    return _page(list(rows), total, page, page_size)
+
+
+def _page(items: list[Item], total: int, page: int, page_size: int) -> dict:
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": math.ceil(total / page_size) if total else 0,
+    }

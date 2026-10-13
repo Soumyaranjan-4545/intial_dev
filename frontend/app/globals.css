@@ -16,6 +16,7 @@
   --ok: #146c43;
 
   --radius: 6px;
+  --wide: 68rem; /* width of header and item grids */
   --focus: 0 0 0 3px #ffffff, 0 0 0 5px var(--accent);
 
   /* Type scale (ratio 1.25) */
@@ -81,6 +82,11 @@ a {
   padding: 2rem 1rem 4rem;
 }
 
+/* Wider pages for grids of items; text inside still keeps short lines. */
+.page-wide {
+  max-width: var(--wide);
+}
+
 .lede {
   color: var(--muted);
 }
@@ -104,7 +110,9 @@ a {
   margin-bottom: 0.375rem;
 }
 
-.field input {
+.field input,
+.field select,
+.field textarea {
   width: 100%;
   font: inherit;
   font-size: var(--text-base);
@@ -115,11 +123,19 @@ a {
   padding: 0.625rem 0.75rem;
 }
 
-.field input:focus-visible {
+.field textarea {
+  min-height: 6rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
   border-color: var(--accent);
 }
 
-.field input[aria-invalid="true"] {
+.field [aria-invalid="true"] {
   border-color: var(--string);
 }
 
@@ -172,6 +188,23 @@ a {
   width: 100%;
 }
 
+/* Less important actions: outlined instead of filled. */
+.button-secondary {
+  color: var(--accent);
+  background: var(--surface);
+}
+
+.button-secondary:hover {
+  color: #ffffff;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 .link-button {
   font: inherit;
   font-size: var(--text-sm);
@@ -196,6 +229,14 @@ a {
 .notice {
   border-left: 4px solid var(--accent);
   background: #e8eefc;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.success {
+  border-left: 4px solid var(--ok);
+  background: #e7f4ec;
   padding: 0.75rem 1rem;
   margin-bottom: 1.25rem;
   border-radius: 0 var(--radius) var(--radius) 0;

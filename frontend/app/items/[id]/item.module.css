@@ -1,0 +1,108 @@
+.back {
+  font-size: var(--text-sm);
+  margin-bottom: 0.5rem;
+}
+
+.header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.ref {
+  color: var(--muted);
+}
+
+.gallery {
+  margin: 1rem 0 1.5rem;
+}
+
+.mainPhoto {
+  width: 100%;
+  max-height: 26rem;
+  object-fit: contain;
+  background: #dfe4ea;
+  border-radius: var(--radius);
+}
+
+.thumbs {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.thumb {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.thumb[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.thumb img {
+  display: block;
+  width: 5rem;
+  height: 3.75rem;
+  object-fit: cover;
+}
+
+/* The "next step" box: the most important thing for a finder to see. */
+.nextStep {
+  background: #fff7e0;
+  border: 1px solid var(--manila-edge);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.nextStep p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.office,
+.panel,
+.secret {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.office p,
+.panel > p:last-of-type {
+  margin-bottom: 0;
+}
+
+.secret {
+  border-left: 4px solid var(--string);
+}
+
+.small {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+/* Keep the line breaks the reporter typed. */
+.description {
+  white-space: pre-line;
+}
