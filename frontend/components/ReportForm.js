@@ -3,21 +3,27 @@
 /**
  * The report form, shared by three pages:
  *   kind="LOST"     Report a lost item
- *   kind="FOUND"    Hand in a found item (finder chooses an office, secret optional)
- *   kind="WALK_IN"  Staff register an item handed in at the desk (secret required)
+ *   kind="FOUND"    Hand in a found item (finder chooses an office)
+ *   kind="WALK_IN"  Staff register an item handed in at the desk
  *
  * Submitting happens in two steps:
  *   1. POST /items/lost, /items/found or /staff/items/walk-in (JSON)
  *   2. POST /items/{id}/photos once per photo (file upload)
  * Then we open the new item's page.
+ *
+ * "I found this" on a lost report opens kind="FOUND" with ?for=<lost id>.
+ * Then the item is already described: we show the lost report in one
+ * summary card instead of "What is it?" and Photos, copy its name,
+ * category, colour and brand, and ask only for an optional note plus
+ * where/when it was found and which office it goes to.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/AuthProvider";
-import { apiFetch, apiUpload } from "@/lib/api";
-import { todayIso } from "@/lib/labels";
+import { apiFetch, apiUpload, photoUrl } from "@/lib/api";
+import { formatDate, todayIso } from "@/lib/labels";
 import styles from "./ReportForm.module.css";
 
 const MAX_PHOTOS = 3;
@@ -33,8 +39,8 @@ const EMPTY = {
   location_text: "",
   happened_on: "",
   dropoff_office_id: "",
-  secret_detail: "",
   handed_in_by: "",
+  note: "", // only when answering a lost report: the finder's optional extra details
 };
 
 export default function ReportForm({ kind }) {
@@ -54,7 +60,9 @@ export default function ReportForm({ kind }) {
   const [photos, setPhotos] = useState([]); // [{ file, preview }]
   const [categories, setCategories] = useState([]);
   const [offices, setOffices] = useState([]);
-  const [lostItem, setLostItem] = useState(null);
+  // undefined = still loading, null = none (or it couldn't be loaded), else the lost report
+  const [lostItem, setLostItem] = useState(forLostId ? undefined : null);
+  const matchMode = Boolean(lostItem); // answering a lost report
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -78,7 +86,10 @@ export default function ReportForm({ kind }) {
           brand: item.brand || "",
         }));
       })
-      .catch(() => setLostItem(null));
+      .catch(() => {
+        setLostItem(null);
+        setError("Couldn't load that lost report (it may be closed). Please describe the item yourself.");
+      });
   }, [forLostId]);
 
   // Previews are temporary in-memory addresses (blob: URLs). Free them when
@@ -120,16 +131,16 @@ export default function ReportForm({ kind }) {
    * The backend checks everything again: it never trusts the browser. */
   function checkForm() {
     const problems = {};
-    if (form.title.trim().length < 3) problems.title = "Give it a short name, at least 3 characters.";
-    if (!form.category_id) problems.category_id = "Choose a category.";
-    if (form.description.trim().length < 10) problems.description = "Describe it in at least 10 characters.";
-    if (form.location_text.trim().length < 3) problems.location_text = "Say where, at least 3 characters.";
+    // When answering a lost report, the name, category and description come from it.
+    if (!matchMode) {
+      if (form.title.trim().length < 1) problems.title = "Give it a short name.";
+      if (!form.category_id) problems.category_id = "Choose a category.";
+      if (form.description.trim().length < 1) problems.description = "Please describe it.";
+    }
+    if (form.location_text.trim().length < 1) problems.location_text = "Say where.";
     if (!form.happened_on) problems.happened_on = "Choose the date.";
     if (isFound && !form.dropoff_office_id) {
       problems.dropoff_office_id = isWalkIn ? "Choose the office where it is." : "Choose where you'll hand it in.";
-    }
-    if (isWalkIn && form.secret_detail.trim().length < 3) {
-      problems.secret_detail = "You have the item: note something not visible in photos.";
     }
     return problems;
   }
@@ -148,19 +159,20 @@ export default function ReportForm({ kind }) {
     const body = {
       title: form.title,
       category_id: Number(form.category_id),
-      description: form.description,
+      description: matchMode ? describeFromLost(lostItem, form.note) : form.description,
       colour: form.colour,
       brand: form.brand,
       location_text: form.location_text,
       happened_on: form.happened_on,
     };
+    // Answering a lost report: the backend links the two and copies the
+    // item's details from the lost report.
+    if (matchMode) body.for_lost_id = lostItem.id;
     if (isWalkIn) {
       body.office_id = Number(form.dropoff_office_id);
-      body.secret_detail = form.secret_detail;
       body.handed_in_by = form.handed_in_by;
     } else if (isFound) {
       body.dropoff_office_id = Number(form.dropoff_office_id);
-      body.secret_detail = form.secret_detail;
     }
     const endpoint = isWalkIn ? "/staff/items/walk-in" : isFound ? "/items/found" : "/items/lost";
 
@@ -178,8 +190,9 @@ export default function ReportForm({ kind }) {
     }
 
     // The report is saved; now the photos. A failed photo doesn't undo the report.
+    // (There are none when answering a lost report: that section is hidden.)
     let failed = 0;
-    for (const photo of photos) {
+    for (const photo of matchMode ? [] : photos) {
       try {
         await apiUpload(`/items/${item.id}/photos`, photo.file);
       } catch {
@@ -203,65 +216,66 @@ export default function ReportForm({ kind }) {
     ) : null;
   }
 
+  const chosenOffice = offices.find((office) => String(office.id) === form.dropoff_office_id);
+
+  if (lostItem === undefined) return <p className="loading">Loading the lost report…</p>;
+
   return (
     <form onSubmit={submit} noValidate className={styles.form}>
-      {lostItem && (
-        <div className="notice">
-          You're handing in something that matches <strong>{lostItem.title}</strong> ({lostItem.ref}). We've
-          copied its details; change anything that's different.
-        </div>
-      )}
-
       {error && (
         <div className="alert" role="alert">
           {error}
         </div>
       )}
 
-      <fieldset className={styles.group}>
-        <legend>What is it?</legend>
-        <div className="field">
-          <label htmlFor="title">Item name</label>
-          <span className="hint">A few words, e.g. "Blue steel water bottle".</span>
-          <input id="title" name="title" value={form.title} onChange={update} maxLength={120} {...errorProps("title")} />
-          {errorText("title")}
-        </div>
+      {matchMode && <LostSummary item={lostItem} />}
 
-        <div className="field">
-          <label htmlFor="category_id">Category</label>
-          <select id="category_id" name="category_id" value={form.category_id} onChange={update} {...errorProps("category_id")}>
-            <option value="">Choose a category</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {errorText("category_id")}
-        </div>
-
-        <div className="form-row">
+      {!matchMode && (
+        <fieldset className={styles.group}>
+          <legend>What is it?</legend>
           <div className="field">
-            <label htmlFor="colour">Colour (optional)</label>
-            <input id="colour" name="colour" value={form.colour} onChange={update} maxLength={40} />
+            <label htmlFor="title">Item name</label>
+            <span className="hint">A few words, e.g. "Blue steel water bottle".</span>
+            <input id="title" name="title" value={form.title} onChange={update} maxLength={120} {...errorProps("title")} />
+            {errorText("title")}
           </div>
-          <div className="field">
-            <label htmlFor="brand">Brand (optional)</label>
-            <input id="brand" name="brand" value={form.brand} onChange={update} maxLength={60} />
-          </div>
-        </div>
 
-        <div className="field">
-          <label htmlFor="description">Description</label>
-          <span className="hint">
-            {isFound
-              ? "What anyone can see from looking at it. Keep identifying details for the secret detail below."
-              : "Anything that helps someone recognise it: size, stickers, case, what was inside."}
-          </span>
-          <textarea id="description" name="description" value={form.description} onChange={update} maxLength={1000} {...errorProps("description")} />
-          {errorText("description")}
-        </div>
-      </fieldset>
+          <div className="field">
+            <label htmlFor="category_id">Category</label>
+            <select id="category_id" name="category_id" value={form.category_id} onChange={update} {...errorProps("category_id")}>
+              <option value="">Choose a category</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {errorText("category_id")}
+          </div>
+
+          <div className="form-row">
+            <div className="field">
+              <label htmlFor="colour">Colour (optional)</label>
+              <input id="colour" name="colour" value={form.colour} onChange={update} maxLength={40} />
+            </div>
+            <div className="field">
+              <label htmlFor="brand">Brand (optional)</label>
+              <input id="brand" name="brand" value={form.brand} onChange={update} maxLength={60} />
+            </div>
+          </div>
+
+          <div className="field">
+            <label htmlFor="description">Description</label>
+            <span className="hint">
+              {isFound
+                ? "What it looks like: colour, size, brand, stickers, what's inside."
+                : "Anything that helps someone recognise it: size, stickers, case, what was inside."}
+            </span>
+            <textarea id="description" name="description" value={form.description} onChange={update} maxLength={1000} {...errorProps("description")} />
+            {errorText("description")}
+          </div>
+        </fieldset>
+      )}
 
       <fieldset className={styles.group}>
         <legend>
@@ -295,74 +309,135 @@ export default function ReportForm({ kind }) {
               ? "The office holding the item now. It appears on the Found page as soon as you register it."
               : "Take the item to this office. It appears on the Found page once a guard receives it."}
           </p>
-          <div className={styles.offices}>
-            {offices.map((office) => (
-              <label key={office.id} className={styles.office}>
-                <input
-                  type="radio"
-                  name="dropoff_office_id"
-                  value={office.id}
-                  checked={form.dropoff_office_id === String(office.id)}
-                  onChange={update}
-                />
-                <span>
-                  <strong>{office.name}</strong>
-                  <span className={styles.officeInfo}>{office.location_description}</span>
-                  <span className={styles.officeInfo}>Open: {office.opening_hours}</span>
-                </span>
-              </label>
-            ))}
+          <div className="field">
+            <label htmlFor="dropoff_office_id">Office</label>
+            <select
+              id="dropoff_office_id"
+              name="dropoff_office_id"
+              value={form.dropoff_office_id}
+              onChange={update}
+              {...errorProps("dropoff_office_id")}
+            >
+              <option value="">Choose an office</option>
+              {offices.map((office) => (
+                <option key={office.id} value={office.id}>
+                  {office.name}
+                </option>
+              ))}
+            </select>
           </div>
-          {fieldErrors.dropoff_office_id && <span className="field-error">{fieldErrors.dropoff_office_id}</span>}
+          {/* Where the chosen office is and when it's open. */}
+          {chosenOffice && (
+            <p className={styles.officeChosen}>
+              <span>{chosenOffice.location_description}</span>
+              <span>Open: {chosenOffice.opening_hours}</span>
+            </p>
+          )}
+          {errorText("dropoff_office_id")}
         </fieldset>
       )}
 
-      {isFound && (
+      {!matchMode && (
         <fieldset className={styles.group}>
-          <legend>Secret identifying detail{isWalkIn ? "" : " (optional)"}</legend>
-          <div className="field">
-            <label htmlFor="secret_detail">Something only the real owner would know</label>
-            <span className="hint">
-              Not visible in photos: a sticker underneath, the lock-screen picture, what's inside. Only security
-              staff see this; they use it to check who the item really belongs to.
-              {isWalkIn ? "" : " If you leave it empty, the guard will add one when you hand it in."}
-            </span>
-            <textarea id="secret_detail" name="secret_detail" value={form.secret_detail} onChange={update} maxLength={300} {...errorProps("secret_detail")} />
-            {errorText("secret_detail")}
-          </div>
+          <legend>Photos (optional, up to {MAX_PHOTOS})</legend>
+          {photos.length > 0 && (
+            <ul className={styles.previews}>
+              {photos.map((photo, index) => (
+                <li key={photo.preview}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.preview} alt={`Photo ${index + 1}`} />
+                  <button type="button" className="link-button" onClick={() => removePhoto(index)}>
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {photos.length < MAX_PHOTOS && (
+            <div className="field">
+              <label htmlFor="photos" className={styles.fileLabel}>
+                Add photos
+              </label>
+              <span className="hint">JPEG, PNG or WebP, up to {MAX_PHOTO_MB} MB each.</span>
+              <input id="photos" type="file" accept={PHOTO_TYPES.join(",")} multiple onChange={addPhotos} />
+            </div>
+          )}
+          {fieldErrors.photos && <span className="field-error">{fieldErrors.photos}</span>}
         </fieldset>
       )}
 
-      <fieldset className={styles.group}>
-        <legend>Photos (optional, up to {MAX_PHOTOS})</legend>
-        {photos.length > 0 && (
-          <ul className={styles.previews}>
-            {photos.map((photo, index) => (
-              <li key={photo.preview}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo.preview} alt={`Photo ${index + 1}`} />
-                <button type="button" className="link-button" onClick={() => removePhoto(index)}>
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {photos.length < MAX_PHOTOS && (
+      {/* Answering a lost report: the finder's optional note comes last. */}
+      {matchMode && (
+        <fieldset className={styles.group}>
+          <legend>Anything to add? (optional)</legend>
           <div className="field">
-            <label htmlFor="photos" className={styles.fileLabel}>
-              Add photos
-            </label>
-            <span className="hint">JPEG, PNG or WebP, up to {MAX_PHOTO_MB} MB each.</span>
-            <input id="photos" type="file" accept={PHOTO_TYPES.join(",")} multiple onChange={addPhotos} />
+            <label htmlFor="note">Your description</label>
+            <span className="hint">
+              Anything different from the report above, or its condition, e.g. &quot;Front light missing&quot;.
+            </span>
+            <textarea id="note" name="note" value={form.note} onChange={update} maxLength={500} />
           </div>
-        )}
-        {fieldErrors.photos && <span className="field-error">{fieldErrors.photos}</span>}
-      </fieldset>
+        </fieldset>
+      )}
 
       <button type="submit" className="button" disabled={busy}>
         {busy ? "Submitting…" : isWalkIn ? "Register item" : isFound ? "Submit found item" : "Submit lost item"}
       </button>
     </form>
+  );
+}
+
+/** The found item's description, built from the lost report plus the
+ * finder's optional note (the API needs at least 1 character, and the
+ * lost report's description always has that). */
+function describeFromLost(lostItem, note) {
+  const extra = note.trim();
+  const text = extra ? `${lostItem.description}\n\nFinder's note: ${extra}` : lostItem.description;
+  return text.slice(0, 1000);
+}
+
+/** One card with everything the owner reported about the lost item. */
+function LostSummary({ item }) {
+  return (
+    <section className={styles.lostSummary} aria-labelledby="lost-summary-heading">
+      <div className={styles.lostPhoto}>
+        {item.cover_photo_id ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photoUrl(item.id, item.cover_photo_id)} alt={`Photo of ${item.title}`} />
+        ) : (
+          <span>{item.category.name}</span>
+        )}
+      </div>
+      <div className={styles.lostBody}>
+        <span className={styles.lostRef}>
+          {item.ref} <span className={styles.lostStamp}>Lost</span>
+        </span>
+        <h2 id="lost-summary-heading" className={styles.lostTitle}>
+          You found: {item.title}
+        </h2>
+        <dl className={styles.lostFacts}>
+          <dt>Category</dt>
+          <dd>{item.category.name}</dd>
+          {item.colour && (
+            <>
+              <dt>Colour</dt>
+              <dd>{item.colour}</dd>
+            </>
+          )}
+          {item.brand && (
+            <>
+              <dt>Brand</dt>
+              <dd>{item.brand}</dd>
+            </>
+          )}
+          <dt>Lost at</dt>
+          <dd>{item.location_text}</dd>
+          <dt>Lost on</dt>
+          <dd>{formatDate(item.happened_on)}</dd>
+          <dt>Description</dt>
+          <dd className={styles.lostDescription}>{item.description}</dd>
+        </dl>
+      </div>
+    </section>
   );
 }

@@ -82,7 +82,7 @@ def found(client, place, title="Black backpack"):
 
 def held(finder, guard, place, title="Black backpack"):
     item_id = found(finder, place, title)
-    guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["office"], "secret_detail": "secret"})
+    guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["office"]})
     return item_id
 
 
@@ -128,8 +128,8 @@ def test_shows_matcher_results_best_first(fake, person, place):
     assert body["enabled"] is True
     assert [m["item"]["id"] for m in body["matches"]] == [b, a]
     assert body["matches"][0]["reason"] == "same category"
-    # Cards never carry the secret detail or the reporter.
-    assert "secret_detail" not in body["matches"][0]["item"]
+    # Cards never carry who reported the item.
+    assert "reporter" not in body["matches"][0]["item"]
 
 
 def test_hidden_and_wrong_items_are_dropped(fake, person, place):

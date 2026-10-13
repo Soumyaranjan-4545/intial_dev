@@ -1,82 +1,92 @@
 "use client";
 
-/** Home page for signed-in users: the main actions, and their profile. */
+/**
+ * Home page for signed-in users.
+ *
+ * Just two sections: the newest lost reports and the newest found items,
+ * each with a "See all" link to its full page (/lost and /found).
+ */
 
+import { ArrowRight, PackageOpen } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
-import { useAuth } from "@/components/AuthProvider";
-import reportStyles from "./report/report.module.css";
+import ItemCard from "@/components/ItemCard";
+import { apiFetch } from "@/lib/api";
+import gridStyles from "@/components/ItemBrowser.module.css";
 import styles from "./home.module.css";
 
-const ROLE_SUMMARY = {
-  STUDENT: "Report items you've lost or found, and look through items held at the security offices.",
-  GUARD: "Receive found items, review ownership claims and hand items back at any security office.",
-  ADMIN: "Everything a guard can do, plus assigning and removing guards.",
-};
+/** How many items each section shows (two rows on a wide screen). */
+const HOW_MANY = 8;
 
 export default function HomePage() {
   return (
-    <AppShell>
+    <AppShell wide>
       <Home />
     </AppShell>
   );
 }
 
+/** Load one endpoint; on failure keep null so the page still shows the rest. */
+function useData(path, query) {
+  const [data, setData] = useState(null);
+  const key = JSON.stringify(query);
+  useEffect(() => {
+    apiFetch(path, { query: JSON.parse(key) })
+      .then(setData)
+      .catch(() => setData(null));
+  }, [path, key]);
+  return data;
+}
+
 function Home() {
-  const { user } = useAuth();
-  const firstName = user.full_name.split(" ")[0];
-  const isStaff = user.role !== "STUDENT";
+  const lost = useData("/items", { kind: "LOST", page_size: HOW_MANY });
+  const found = useData("/items", { kind: "FOUND", page_size: HOW_MANY });
 
   return (
-    <>
-      <h1>Hello, {firstName}</h1>
-      <p className="lede">{ROLE_SUMMARY[user.role]}</p>
+    <div className={styles.main}>
+      <Recent
+        title="Recently reported lost"
+        href="/lost"
+        linkText="See all lost items"
+        result={lost}
+        empty="Nobody is looking for anything right now."
+      />
+      <Recent
+        title="Recently reported found"
+        href="/found"
+        linkText="See all found items"
+        result={found}
+        empty="Nothing has been handed in yet."
+      />
+    </div>
+  );
+}
 
-      <div className={reportStyles.choices}>
-        <Link href="/report/lost" className={reportStyles.choice}>
-          <strong>I lost something</strong>
-          <span>Report it, and check whether it has already been handed in.</span>
-        </Link>
-        <Link href="/report/found" className={reportStyles.choice}>
-          <strong>I found something</strong>
-          <span>Describe it, then hand it in at a security office.</span>
-        </Link>
-        <Link href="/found" className={reportStyles.choice}>
-          <strong>Browse found items</strong>
-          <span>Everything currently held at the security offices.</span>
+function Recent({ title, href, linkText, result, empty }) {
+  return (
+    <section aria-label={title}>
+      <div className={styles.sectionHead}>
+        <h2>{title}</h2>
+        <Link href={href} className={styles.seeAll}>
+          {linkText} <ArrowRight size={15} aria-hidden="true" />
         </Link>
       </div>
-
-      <section className={styles.section} aria-labelledby="profile-heading">
-        <h2 id="profile-heading">Your profile</h2>
-        <dl className={styles.details}>
-          <dt>Name</dt>
-          <dd>{user.full_name}</dd>
-          <dt>Email</dt>
-          <dd>{user.email}</dd>
-          {!isStaff && (
-            <>
-              <dt>Roll number</dt>
-              <dd>{user.roll_number}</dd>
-            </>
-          )}
-          <dt>Mobile</dt>
-          <dd>{user.phone || "Not added"}</dd>
-          {!isStaff && (
-            <>
-              <dt>Hall and room</dt>
-              <dd>{[user.hall, user.room].filter(Boolean).join(", ") || "Not added"}</dd>
-            </>
-          )}
-          {isStaff && (
-            <>
-              <dt>Usual office</dt>
-              <dd>{user.office?.name || "Not assigned"}</dd>
-            </>
-          )}
-        </dl>
-      </section>
-    </>
+      {!result ? (
+        <p className="loading">Loading…</p>
+      ) : result.items.length === 0 ? (
+        <div className={gridStyles.empty}>
+          <PackageOpen size={26} strokeWidth={1.5} aria-hidden="true" />
+          <p>{empty}</p>
+        </div>
+      ) : (
+        <div className={gridStyles.grid}>
+          {result.items.map((item) => (
+            <ItemCard key={item.id} item={item} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

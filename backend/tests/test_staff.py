@@ -53,16 +53,15 @@ def report_found(client, place, **changes):
 
 def test_students_cannot_use_the_staff_desk(person, place):
     student = person()
-    item_id = report_found(student, place, secret_detail="Red keychain")
+    item_id = report_found(student, place)
     assert student.get("/staff/items").status_code == 403
     assert student.post(f"/staff/items/{item_id}/receive", json={"office_id": place["main"]}).status_code == 403
-    assert student.post("/staff/items/walk-in", json={**item_fields(place), "office_id": place["main"],
-                                                       "secret_detail": "x" * 5}).status_code == 403
+    assert student.post("/staff/items/walk-in", json={**item_fields(place), "office_id": place["main"]}).status_code == 403
 
 
 def test_admin_has_every_guard_power(person, place):
     admin = person(UserRole.ADMIN)
-    item_id = report_found(person(), place, secret_detail="Red keychain")
+    item_id = report_found(person(), place)
     response = admin.post(f"/staff/items/{item_id}/receive", json={"office_id": place["main"]})
     assert response.status_code == 200
 
@@ -72,15 +71,13 @@ def test_admin_has_every_guard_power(person, place):
 
 def test_receive_records_who_where_and_when(person, place):
     finder, guard = person(), person(UserRole.GUARD, name="Ramesh Kumar")
-    item_id = report_found(finder, place, secret_detail="Red keychain")
+    item_id = report_found(finder, place)
 
     body = guard.post(f"/staff/items/{item_id}/receive",
                       json={"office_id": place["main"], "condition_note": "Zip slightly torn"}).json()
     assert body["status"] == "IN_CUSTODY"
     assert body["current_office"]["name"] == "Test Main"
     assert body["received_by_name"] == "Ramesh Kumar"
-    assert body["secret_detail"] == "Red keychain"
-    assert body["secret_detail_by"] == "FINDER"  # kept unchanged
 
     [event] = body["custody_events"]
     assert event["event_type"] == "RECEIVED"
@@ -91,26 +88,14 @@ def test_receive_records_who_where_and_when(person, place):
 
 def test_receive_at_a_different_office_than_chosen(person, place):
     guard = person(UserRole.GUARD)
-    item_id = report_found(person(), place, secret_detail="Red keychain")  # finder chose main
+    item_id = report_found(person(), place)  # finder chose main
     body = guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["sub"]}).json()
     assert body["current_office"]["name"] == "Test Sub"
 
 
-def test_receive_needs_a_secret_detail(person, place):
-    guard = person(UserRole.GUARD)
-    item_id = report_found(person(), place)  # finder gave no secret
-    refused = guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["main"]})
-    assert refused.status_code == 400
-    assert "secret" in refused.json()["detail"]
-
-    ok = guard.post(f"/staff/items/{item_id}/receive",
-                    json={"office_id": place["main"], "secret_detail": "Sticker under the base"}).json()
-    assert ok["secret_detail_by"] == "GUARD"
-
-
 def test_receive_only_once_and_only_open_offices(person, place):
     guard = person(UserRole.GUARD)
-    item_id = report_found(person(), place, secret_detail="Red keychain")
+    item_id = report_found(person(), place)
     closed = guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["closed"]})
     assert closed.status_code == 400
     guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["main"]})
@@ -126,7 +111,6 @@ def test_walk_in_goes_straight_to_the_found_page(person, place):
     response = guard.post("/staff/items/walk-in", json={
         **item_fields(place, title="Grey phone"),
         "office_id": place["sub"],
-        "secret_detail": "Lock screen shows a beach",
         "handed_in_by": "Canteen staff",
     })
     assert response.status_code == 201
@@ -139,13 +123,11 @@ def test_walk_in_goes_straight_to_the_found_page(person, place):
 
     found = student.get("/items", params={"kind": "FOUND"}).json()
     assert [i["title"] for i in found["items"]] == ["Grey phone"]
-    # ...and students still can't see its secret.
-    assert student.get(f"/items/{body['id']}").json()["secret_detail"] is None
 
 
-def test_walk_in_requires_a_secret_detail(person, place):
+def test_walk_in_needs_an_office(person, place):
     guard = person(UserRole.GUARD)
-    response = guard.post("/staff/items/walk-in", json={**item_fields(place), "office_id": place["main"]})
+    response = guard.post("/staff/items/walk-in", json=item_fields(place))
     assert response.status_code == 422
 
 
@@ -153,7 +135,7 @@ def test_walk_in_requires_a_secret_detail(person, place):
 
 
 def received_item(guard, place, finder):
-    item_id = report_found(finder, place, secret_detail="Red keychain")
+    item_id = report_found(finder, place)
     guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["sub"]})
     return item_id
 
@@ -176,7 +158,7 @@ def test_transfer_moves_the_item_and_logs_it(person, place):
 
 def test_cannot_transfer_before_receiving(person, place):
     guard = person(UserRole.GUARD)
-    item_id = report_found(person(), place, secret_detail="Red keychain")
+    item_id = report_found(person(), place)
     assert guard.post(f"/staff/items/{item_id}/transfer", json={"to_office_id": place["sub"]}).status_code == 403
 
 
@@ -201,19 +183,7 @@ def test_dispose_and_donate(person, place):
     assert again.status_code == 403
 
 
-# ---------------- Secret detail and photos for staff ----------------
-
-
-def test_guard_can_correct_the_secret_after_receiving(person, place):
-    guard, finder = person(UserRole.GUARD), person()
-    item_id = received_item(guard, place, finder)
-
-    updated = guard.put(f"/items/{item_id}/secret-detail", json={"secret_detail": "Bell on the keychain"}).json()
-    assert updated["secret_detail"] == "Bell on the keychain" and updated["secret_detail_by"] == "GUARD"
-    # A held item can't lose its secret...
-    assert guard.put(f"/items/{item_id}/secret-detail", json={"secret_detail": ""}).status_code == 400
-    # ...and the finder can no longer change it.
-    assert finder.put(f"/items/{item_id}/secret-detail", json={"secret_detail": "x"}).status_code == 403
+# ---------------- What staff see ----------------
 
 
 def test_staff_detail_shows_reporter_and_history_students_do_not(person, place):
@@ -236,8 +206,8 @@ def test_staff_detail_shows_reporter_and_history_students_do_not(person, place):
 
 def test_staff_list_stages_offices_and_reference_search(person, place):
     guard, finder = person(UserRole.GUARD), person()
-    waiting_main = report_found(finder, place, title="Blue bottle", secret_detail="Dent")
-    waiting_sub = report_found(finder, place, title="Red umbrella", dropoff_office_id=place["sub"], secret_detail="x")
+    waiting_main = report_found(finder, place, title="Blue bottle")
+    waiting_sub = report_found(finder, place, title="Red umbrella", dropoff_office_id=place["sub"])
     held = received_item(guard, place, finder)
 
     def ids(**params):

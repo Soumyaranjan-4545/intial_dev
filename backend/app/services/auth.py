@@ -36,18 +36,55 @@ def normalize_email(raw: str) -> str:
     return raw.strip().lower()
 
 
+def _domain(email: str) -> str:
+    # The part after the LAST "@", compared exactly, so "x@evil-iitk.ac.in"
+    # or "x@iitk.ac.in.evil.com" never count as iitk.ac.in.
+    return email.rsplit("@", 1)[-1]
+
+
+def _staff_domains() -> set[str]:
+    raw = get_settings().staff_email_domains
+    return {d.strip().lower() for d in raw.split(",") if d.strip()}
+
+
 def check_allowed_domain(email: str) -> None:
+    """Students: only the campus domain."""
     domain = get_settings().allowed_email_domain
-    # Compare the part after "@" exactly, so "x@evil-iitk.ac.in" or
-    # "x@iitk.ac.in.evil.com" are refused.
-    if email.rsplit("@", 1)[-1] != domain:
+    if _domain(email) != domain:
         raise bad_request(f"Please use your @{domain} email address.")
+
+
+def check_staff_email(email: str) -> None:
+    """Guards and the admin: the campus domain, or a staff domain (gmail.com)."""
+    allowed = {get_settings().allowed_email_domain, *_staff_domains()}
+    if _domain(email) not in allowed:
+        raise bad_request("Use an " + " or ".join(f"@{d}" for d in sorted(allowed)) + " email address.")
+
+
+def check_can_sign_in(db: Session, email: str) -> None:
+    """Who may sign in with this email?
+      - any @iitk.ac.in address (new accounts start as students)
+      - a staff-domain address (e.g. @gmail.com) ONLY if that account is
+        already a guard or the admin. Nobody can become staff by signing
+        in with Gmail: the admin must add them first.
+    """
+    domain = _domain(email)
+    if domain == get_settings().allowed_email_domain:
+        return
+    if domain in _staff_domains():
+        user = db.scalar(select(User).where(User.email == email))
+        if user is not None and user.is_staff:
+            return
+    raise bad_request(
+        f"Please use your @{get_settings().allowed_email_domain} email address. "
+        "Other addresses work only for security staff added by the admin."
+    )
 
 
 def request_login_code(db: Session, raw_email: str) -> None:
     settings = get_settings()
     email = normalize_email(raw_email)
-    check_allowed_domain(email)
+    check_can_sign_in(db, email)
     current = now()
 
     # ---- Rate limits: stop someone flooding an inbox with codes ----
@@ -96,6 +133,8 @@ def verify_login_code(db: Session, raw_email: str, code: str) -> User:
     on their first sign-in). On failure, raise an error explaining why."""
     settings = get_settings()
     email = normalize_email(raw_email)
+    # Checked again here: a guard may have been removed after the code was sent.
+    check_can_sign_in(db, email)
     current = now()
 
     login_code = db.scalar(

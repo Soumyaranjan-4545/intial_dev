@@ -49,7 +49,7 @@
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
   margin: 1rem 0;
 }
@@ -74,7 +74,7 @@
 
 /* The "what to do now" box for the claimant. */
 .nextStep {
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 1rem 1.25rem;
   margin: 1rem 0 1.5rem;
   background: var(--surface);
@@ -103,7 +103,7 @@
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 1rem 1.25rem;
   margin: 1.5rem 0;
 }
@@ -140,13 +140,76 @@
   border: 1px solid var(--line);
 }
 
+/* History as a timeline: a line down the left with a dot per event. */
 .history {
+  list-style: none;
   margin: 0;
-  padding-left: 1.25rem;
+  padding: 0 0 0 18px;
+  border-left: 2px solid var(--rule);
+}
+
+.history li {
+  position: relative;
+}
+
+.history li::before {
+  content: "";
+  position: absolute;
+  left: -24px;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 3px var(--surface);
 }
 
 .history li + li {
-  margin-top: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+/* ---------- Progress tracker ---------- */
+
+.tracker {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 18px 0 6px;
+  padding: 0;
+}
+
+.trackStep {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 9px;
+  border-top: 3px solid var(--rule);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+.trackNum {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.trackStep[data-state="done"],
+.trackStep[data-state="current"] {
+  border-top-color: var(--brand);
+  color: var(--brand-dark);
+}
+
+.trackStep[data-state="dead"] {
+  border-top-color: var(--lost);
+  color: var(--lost);
+}
+
+@media (max-width: 30rem) {
+  .trackStep {
+    font-size: 0.72rem;
+  }
 }
 
 .note {
@@ -159,7 +222,7 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-top: 4px solid var(--accent);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 1rem 1.25rem;
   margin: 1.5rem 0;
 }
@@ -179,12 +242,6 @@
   .compare {
     grid-template-columns: 1fr;
   }
-}
-
-.secret {
-  border-left: 4px solid var(--string);
-  padding-left: 0.75rem;
-  white-space: pre-line;
 }
 
 .others {

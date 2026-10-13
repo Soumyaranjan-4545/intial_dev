@@ -46,19 +46,30 @@ function MyReports() {
   }
   if (!result) return <p className="loading">Loading…</p>;
 
+  // After "Cancel this report" on a found item's page.
+  const cancelled = params.get("cancelled") && (
+    <div className="success" role="status">
+      Your found report was cancelled.
+    </div>
+  );
+
   if (result.total === 0) {
     return (
-      <div className={browserStyles.empty}>
-        <p>You haven't reported anything yet.</p>
-        <Link href="/report" className="button">
-          Report an item
-        </Link>
-      </div>
+      <>
+        {cancelled}
+        <div className={browserStyles.empty}>
+          <p>You haven't reported anything yet.</p>
+          <Link href="/report" className="button">
+            Report an item
+          </Link>
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      {cancelled}
       <div className={browserStyles.grid}>
         {result.items.map((item) => (
           <ItemCard key={item.id} item={item} showStatus />

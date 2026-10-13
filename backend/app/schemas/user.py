@@ -66,7 +66,7 @@ class _EditableFields(BaseModel):
 
 
 class OnboardingIn(_EditableFields):
-    full_name: str = Field(min_length=2, max_length=120)
+    full_name: str = Field(min_length=1, max_length=120)
     # Required for students; the service checks that, since staff have none.
     roll_number: str | None = None
 

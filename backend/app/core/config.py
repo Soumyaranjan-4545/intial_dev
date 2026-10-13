@@ -48,6 +48,9 @@ class Settings(BaseSettings):
 
     # ---- App rules ----
     allowed_email_domain: str = "iitk.ac.in"
+    # Extra domains that security staff (guards, admin) may use, comma-separated.
+    # A staff address works only once the admin has made it a guard.
+    staff_email_domains: str = "gmail.com"
     frontend_origin: str = "http://localhost:3000"
     # Dates like "found on" are in campus time, not the server's own zone.
     timezone: str = "Asia/Kolkata"

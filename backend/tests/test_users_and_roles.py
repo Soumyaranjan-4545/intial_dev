@@ -84,13 +84,13 @@ def signed_in_admin(sign_in, make_user):
 def test_students_cannot_use_admin_endpoints(sign_in):
     client = sign_in(STUDENT)
     client.post("/users/me/onboarding", json=PROFILE)
-    assert client.get("/admin/guards").status_code == 403
+    assert client.get("/admin/staff").status_code == 403
 
 
 def test_not_onboarded_admin_must_finish_profile_first(sign_in, make_user):
     make_user("admin@iitk.ac.in", role=UserRole.ADMIN)  # no name yet
     client = sign_in("admin@iitk.ac.in")
-    response = client.get("/admin/guards")
+    response = client.get("/admin/staff")
     assert response.status_code == 403
     assert "profile" in response.json()["detail"]
 
@@ -99,21 +99,23 @@ def test_admin_assigns_and_removes_a_guard(sign_in, make_user):
     admin = signed_in_admin(sign_in, make_user)
 
     # The guard has never signed in: their account is created now.
-    created = admin.post("/admin/guards", json={"email": "guard1@iitk.ac.in"})
+    created = admin.post("/admin/staff", json={"email": "guard1@iitk.ac.in"})
     assert created.status_code == 201
     guard_id = created.json()["id"]
     assert created.json()["role"] == "GUARD"
-    assert [g["id"] for g in admin.get("/admin/guards").json()] == [guard_id]
+    # The list has admins first, then guards.
+    assert [m["role"] for m in admin.get("/admin/staff").json()] == ["ADMIN", "GUARD"]
+    assert admin.get("/admin/staff").json()[1]["id"] == guard_id
 
     # The guard signs in and is a guard from the start.
     guard = sign_in("guard1@iitk.ac.in")
     guard.post("/users/me/onboarding", json={"full_name": "Ramesh Kumar"})
     assert guard.get("/auth/me").json()["role"] == "GUARD"
     # Guards don't have the admin's extra power.
-    assert guard.get("/admin/guards").status_code == 403
+    assert guard.get("/admin/staff").status_code == 403
 
     # Removing takes effect immediately, even while they're signed in.
-    removed = admin.delete(f"/admin/guards/{guard_id}")
+    removed = admin.delete(f"/admin/staff/{guard_id}")
     assert removed.json()["role"] == "STUDENT"
     assert guard.get("/auth/me").json()["role"] == "STUDENT"
 
@@ -128,32 +130,112 @@ def test_admin_sets_a_guards_usual_office(sign_in, make_user, db):
     db.commit()
 
     admin = signed_in_admin(sign_in, make_user)
-    guard_id = admin.post("/admin/guards", json={"email": "guard1@iitk.ac.in"}).json()["id"]
-    response = admin.patch(f"/admin/guards/{guard_id}", json={"office_id": office.id})
+    guard_id = admin.post("/admin/staff", json={"email": "guard1@iitk.ac.in"}).json()["id"]
+    response = admin.patch(f"/admin/staff/{guard_id}", json={"office_id": office.id})
     assert response.json()["office"] == {"id": office.id, "name": "Test Office"}
 
-    bad = admin.patch(f"/admin/guards/{guard_id}", json={"office_id": 999999})
+    bad = admin.patch(f"/admin/staff/{guard_id}", json={"office_id": 999999})
     assert bad.status_code == 400
     assert db.scalar(select(Office).where(Office.id == office.id)) is not None
 
 
-def test_admin_cannot_be_turned_into_a_guard(sign_in, make_user):
+def test_existing_staff_cannot_be_added_again(sign_in, make_user):
     admin = signed_in_admin(sign_in, make_user)
-    response = admin.post("/admin/guards", json={"email": "admin@iitk.ac.in"})
-    assert response.status_code == 400
+    response = admin.post("/admin/staff", json={"email": "admin@iitk.ac.in"})
+    assert response.status_code == 409
+
+
+# ---------------- Admins managing admins ----------------
+
+
+def test_admin_adds_another_admin_who_can_manage_staff(sign_in, make_user):
+    admin = signed_in_admin(sign_in, make_user)
+    created = admin.post("/admin/staff", json={"email": "second.admin@gmail.com", "role": "ADMIN"})
+    assert created.status_code == 201 and created.json()["role"] == "ADMIN"
+
+    second = sign_in("second.admin@gmail.com")
+    second.post("/users/me/onboarding", json={"full_name": "Second Admin"})
+    assert second.get("/admin/staff").status_code == 200
+    # ...and has every guard power too.
+    assert second.get("/staff/items").status_code == 200
+
+
+def test_admin_promotes_and_demotes(sign_in, make_user):
+    admin = signed_in_admin(sign_in, make_user)
+    member_id = admin.post("/admin/staff", json={"email": "guard1@iitk.ac.in"}).json()["id"]
+    assert admin.patch(f"/admin/staff/{member_id}", json={"role": "ADMIN"}).json()["role"] == "ADMIN"
+    assert admin.patch(f"/admin/staff/{member_id}", json={"role": "GUARD"}).json()["role"] == "GUARD"
+    # Changing only the office leaves the role alone.
+    assert admin.patch(f"/admin/staff/{member_id}", json={"office_id": None}).json()["role"] == "GUARD"
+
+
+def test_admin_cannot_demote_or_remove_themselves(sign_in, make_user):
+    """So there is always at least one admin."""
+    admin = signed_in_admin(sign_in, make_user)
+    me = admin.get("/auth/me").json()["id"]
+    assert admin.patch(f"/admin/staff/{me}", json={"role": "GUARD"}).status_code == 400
+    assert admin.delete(f"/admin/staff/{me}").status_code == 400
+    assert admin.get("/auth/me").json()["role"] == "ADMIN"
+
+
+def test_one_admin_can_remove_another(sign_in, make_user):
+    admin = signed_in_admin(sign_in, make_user)
+    other_id = admin.post("/admin/staff", json={"email": "other@iitk.ac.in", "role": "ADMIN"}).json()["id"]
+    removed = admin.delete(f"/admin/staff/{other_id}")
+    assert removed.json()["role"] == "STUDENT"
+
+
+def test_guards_cannot_manage_staff(sign_in, make_user):
+    make_user("guard9@iitk.ac.in", role=UserRole.GUARD, full_name="Guard Nine")
+    guard = sign_in("guard9@iitk.ac.in")
+    assert guard.get("/admin/staff").status_code == 403
+    assert guard.post("/admin/staff", json={"email": "x@iitk.ac.in", "role": "ADMIN"}).status_code == 403
 
 
 def test_removed_guard_adds_roll_number_but_keeps_name(sign_in, make_user):
     make_user("admin@iitk.ac.in", role=UserRole.ADMIN, full_name="Admin")
     admin = sign_in("admin@iitk.ac.in")
-    guard_id = admin.post("/admin/guards", json={"email": "guard1@iitk.ac.in"}).json()["id"]
+    guard_id = admin.post("/admin/staff", json={"email": "guard1@iitk.ac.in"}).json()["id"]
     guard = sign_in("guard1@iitk.ac.in")
     guard.post("/users/me/onboarding", json={"full_name": "Ramesh Kumar"})
 
-    admin.delete(f"/admin/guards/{guard_id}")
+    admin.delete(f"/admin/staff/{guard_id}")
     me = guard.get("/auth/me").json()
     assert me["role"] == "STUDENT" and me["is_onboarded"] is False  # needs a roll number now
 
     done = guard.post("/users/me/onboarding", json={"full_name": "Someone Else", "roll_number": "230555"})
     assert done.json()["full_name"] == "Ramesh Kumar"  # name stays locked
     assert done.json()["is_onboarded"] is True
+
+
+# ---------------- Staff may use @gmail.com ----------------
+
+
+def test_admin_can_add_a_gmail_guard_who_can_then_sign_in(sign_in, make_user):
+    admin = signed_in_admin(sign_in, make_user)
+    created = admin.post("/admin/staff", json={"email": "Ramesh.Guard@Gmail.com"})
+    assert created.status_code == 201, created.text
+    assert created.json()["email"] == "ramesh.guard@gmail.com"
+    guard = sign_in("ramesh.guard@gmail.com")
+    assert guard.get("/auth/me").json()["role"] == "GUARD"
+
+
+def test_unknown_gmail_cannot_sign_in(make_client):
+    # Nobody becomes staff by signing in with Gmail: the admin must add them first.
+    response = make_client().post("/auth/request-code", json={"email": "someone@gmail.com"})
+    assert response.status_code == 400
+    assert "@iitk.ac.in" in response.json()["detail"]
+
+
+def test_removed_gmail_guard_can_no_longer_sign_in(sign_in, make_user, make_client):
+    admin = signed_in_admin(sign_in, make_user)
+    guard_id = admin.post("/admin/staff", json={"email": "old.guard@gmail.com"}).json()["id"]
+    assert admin.delete(f"/admin/staff/{guard_id}").status_code == 200
+    response = make_client().post("/auth/request-code", json={"email": "old.guard@gmail.com"})
+    assert response.status_code == 400
+
+
+def test_other_domains_cannot_be_guards(sign_in, make_user):
+    admin = signed_in_admin(sign_in, make_user)
+    response = admin.post("/admin/staff", json={"email": "guard@yahoo.com"})
+    assert response.status_code == 400

@@ -1,5 +1,4 @@
-"""Tests for reporting items, who can see them, the secret detail,
-filters, pagination and photos."""
+"""Tests for reporting items, who can see them, filters, pagination and photos."""
 
 import io
 from datetime import timedelta
@@ -69,7 +68,7 @@ def found_body(place, **changes):
     return {**lost_body(place), "dropoff_office_id": place["office"], **changes}
 
 
-def receive(db, item_id, secret=None):
+def receive(db, item_id):
     """A guard receives the item at the office the finder chose."""
     guard = db.scalar(select(User).where(User.email == "desk.guard@iitk.ac.in"))
     if guard is None:
@@ -77,7 +76,7 @@ def receive(db, item_id, secret=None):
         db.add(guard)
         db.flush()
     item = db.get(Item, item_id)
-    custody.receive_item(db, item, guard, ReceiveIn(office_id=item.dropoff_office_id, secret_detail=secret))
+    custody.receive_item(db, item, guard, ReceiveIn(office_id=item.dropoff_office_id))
 
 
 # ---------------- Reporting ----------------
@@ -94,7 +93,7 @@ def test_report_lost_item(person, place):
 
 
 def test_report_found_item_waits_for_dropoff(person, place):
-    body = person().post("/items/found", json=found_body(place, secret_detail="Red keychain")).json()
+    body = person().post("/items/found", json=found_body(place)).json()
     assert body["status"] == "AWAITING_DROPOFF"
     assert body["ref"].startswith("FND-")
     assert body["dropoff_office"]["name"] == "Test Office"
@@ -120,8 +119,10 @@ def test_report_rejects_bad_values(person, place, changes, message):
     assert message in response.json()["detail"]
 
 
-def test_report_rejects_short_description(person, place):
-    assert person().post("/items/lost", json=lost_body(place, description="bag")).status_code == 422
+def test_report_needs_a_description_but_one_character_is_enough(person, place):
+    reporter = person()
+    assert reporter.post("/items/lost", json=lost_body(place, description="  ")).status_code == 422
+    assert reporter.post("/items/lost", json=lost_body(place, description="x")).status_code == 201
 
 
 def test_found_needs_a_real_office(person, place):
@@ -134,7 +135,7 @@ def test_found_needs_a_real_office(person, place):
 
 def test_found_item_hidden_until_received(person, place, db):
     finder, other = person(), person()
-    item_id = finder.post("/items/found", json=found_body(place, secret_detail="Red keychain")).json()["id"]
+    item_id = finder.post("/items/found", json=found_body(place)).json()["id"]
 
     # Before drop-off: not on the Found page, and other students get 404.
     assert other.get("/items", params={"kind": "FOUND"}).json()["total"] == 0
@@ -148,40 +149,15 @@ def test_found_item_hidden_until_received(person, place, db):
     assert page["items"][0]["current_office"]["name"] == "Test Office"
 
 
-def test_secret_detail_visibility(person, place, db):
-    finder, other, guard = person(), person(), person(UserRole.GUARD)
-    item_id = finder.post("/items/found", json=found_body(place, secret_detail="Red keychain")).json()["id"]
-
-    # Before drop-off: the finder sees and can edit it.
-    mine = finder.get(f"/items/{item_id}").json()
-    assert mine["secret_detail"] == "Red keychain" and mine["can_edit_secret"]
-
-    receive(db, item_id)
-    # After drop-off: hidden from the finder and other students, shown to guards.
-    assert finder.get(f"/items/{item_id}").json()["secret_detail"] is None
-    assert other.get(f"/items/{item_id}").json()["secret_detail"] is None
-    assert guard.get(f"/items/{item_id}").json()["secret_detail"] == "Red keychain"
-    # Lists never include it, for anyone.
-    card = guard.get("/items", params={"kind": "FOUND"}).json()["items"][0]
-    assert "secret_detail" not in card
-
-
-def test_finder_edits_secret_only_before_dropoff(person, place, db):
-    finder = person()
+def test_there_is_no_secret_detail_any_more(person, place, db):
+    """The secret identifying detail was removed from the app: it's not
+    stored, not shown, and the old endpoint is gone."""
+    finder, guard = person(), person(UserRole.GUARD)
     item_id = finder.post("/items/found", json=found_body(place)).json()["id"]
-    updated = finder.put(f"/items/{item_id}/secret-detail", json={"secret_detail": "Scratch on the lid"})
-    assert updated.json()["secret_detail"] == "Scratch on the lid"
-
-    receive(db, item_id)
-    assert finder.put(f"/items/{item_id}/secret-detail", json={"secret_detail": "x"}).status_code == 403
-
-
-def test_receiving_requires_a_secret_detail(person, place, db):
-    item_id = person().post("/items/found", json=found_body(place)).json()["id"]
-    with pytest.raises(Exception, match="secret"):
-        receive(db, item_id)
-    receive(db, item_id, secret="Guard noted: sticker under the base")
-    assert db.get(Item, item_id).secret_detail_by == "GUARD"
+    assert "secret_detail" not in finder.get(f"/items/{item_id}").json()
+    receive(db, item_id)  # receiving no longer needs one
+    assert "secret_detail" not in guard.get(f"/items/{item_id}").json()
+    assert finder.put(f"/items/{item_id}/secret-detail", json={"secret_detail": "x"}).status_code in (404, 405)
 
 
 def test_close_lost_report(person, place):
@@ -331,15 +307,147 @@ def test_only_the_reporter_adds_photos(person, place):
 
 def test_photos_of_hidden_items_are_hidden(person, place):
     finder, other = person(), person()
-    item_id = finder.post("/items/found", json=found_body(place, secret_detail="x")).json()["id"]
+    item_id = finder.post("/items/found", json=found_body(place)).json()["id"]
     photo_id = upload(finder, item_id, JPEG).json()["photo_ids"][0]
     assert other.get(f"/items/{item_id}/photos/{photo_id}").status_code == 404
 
 
 def test_receiving_moves_item_to_dropoff_office(person, place, db):
-    item_id = person().post("/items/found", json=found_body(place, secret_detail="x")).json()["id"]
+    item_id = person().post("/items/found", json=found_body(place)).json()["id"]
     receive(db, item_id)
     item = db.scalar(select(Item).where(Item.id == item_id))
     assert item.status == ItemStatus.IN_CUSTODY
     assert item.current_office_id == place["office"]
     assert item.received_at is not None
+
+
+# ---------------- Editing a report, and managing its photos ----------------
+
+
+def test_reporter_edits_open_lost_report(person, place):
+    owner = person()
+    item_id = owner.post("/items/lost", json=lost_body(place)).json()["id"]
+    changed = {**lost_body(place), "title": "Black Soundcore headphones", "colour": "Black",
+               "description": "Over-ear headphones, left cushion slightly torn."}
+    response = owner.put(f"/items/{item_id}", json=changed)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["title"] == "Black Soundcore headphones" and body["can_edit"] is True
+    # The search finds it by its new name.
+    found = owner.get("/items", params={"kind": "LOST", "q": "soundcore"}).json()
+    assert [i["id"] for i in found["items"]] == [item_id]
+
+
+def test_only_the_reporter_can_edit(person, place):
+    owner, other = person(), person()
+    item_id = owner.post("/items/lost", json=lost_body(place)).json()["id"]
+    assert other.get(f"/items/{item_id}").json()["can_edit"] is False
+    assert other.put(f"/items/{item_id}", json=lost_body(place)).status_code == 403
+
+
+def test_edit_uses_the_same_checks_as_reporting(person, place):
+    owner = person()
+    item_id = owner.post("/items/lost", json=lost_body(place)).json()["id"]
+    assert owner.put(f"/items/{item_id}", json={**lost_body(place), "title": " "}).status_code == 422
+    assert owner.put(f"/items/{item_id}", json={**lost_body(place), "category_id": 999999}).status_code == 400
+
+
+def test_no_edits_after_closing_or_handing_in(person, place, db):
+    owner = person()
+    lost_id = owner.post("/items/lost", json=lost_body(place)).json()["id"]
+    owner.post(f"/items/{lost_id}/close", json={"outcome": "RECOVERED"})
+    assert owner.put(f"/items/{lost_id}", json=lost_body(place)).status_code == 403
+
+    finder = person()
+    found_id = finder.post("/items/found", json=found_body(place)).json()["id"]
+    assert finder.put(f"/items/{found_id}", json=found_body(place)).status_code == 200  # before hand-in
+    receive(db, found_id)
+    assert finder.put(f"/items/{found_id}", json=found_body(place)).status_code == 403
+
+
+def test_reporter_removes_and_replaces_a_photo(person, place):
+    owner, other = person(), person()
+    item_id = owner.post("/items/lost", json=lost_body(place)).json()["id"]
+    for _ in range(3):
+        upload(owner, item_id, JPEG)
+    body = owner.get(f"/items/{item_id}").json()
+    assert len(body["photo_ids"]) == 3
+    assert body["can_add_photos"] is False and body["can_remove_photos"] is True
+    first = body["photo_ids"][0]
+
+    # Others can't remove it.
+    assert other.delete(f"/items/{item_id}/photos/{first}").status_code == 403
+
+    after = owner.delete(f"/items/{item_id}/photos/{first}").json()
+    assert first not in after["photo_ids"] and after["can_add_photos"] is True
+    assert after["cover_photo_id"] == after["photo_ids"][0]  # the next photo becomes the cover
+    assert owner.get(f"/items/{item_id}/photos/{first}").status_code == 404
+    photo_files = list((get_settings().upload_dir / "items").glob("*"))
+    assert len(photo_files) == 2  # the removed photo's file is deleted too
+    # ...and a new one can be added in its place.
+    assert upload(owner, item_id, JPEG).status_code == 201
+
+
+# ---------------- "I found this": a found report answering a lost report ----------------
+
+
+def test_i_found_this_copies_the_lost_details_and_locks_them(person, place):
+    owner, finder = person(), person()
+    lost = owner.post("/items/lost", json=lost_body(place, title="Red umbrella", colour="Red")).json()
+    # Even if the form sent other details, the item is what the owner reported.
+    body = found_body(place, title="Something else", colour="Blue", for_lost_id=lost["id"])
+    found = finder.post("/items/found", json=body)
+    assert found.status_code == 201
+    found = found.json()
+    assert (found["title"], found["colour"]) == ("Red umbrella", "Red")
+    assert found["answers_lost_id"] == lost["id"]
+    assert found["answers_lost_ref"] == lost["ref"]
+    # The finder can't edit the details or the photos...
+    assert found["can_edit"] is False
+    assert found["can_add_photos"] is False
+    assert finder.put(f"/items/{found['id']}", json=lost_body(place)).status_code == 403
+    # ...but can still change the office or cancel.
+    assert found["can_change_dropoff"] is True
+    assert found["can_cancel"] is True
+
+
+def test_a_normal_found_report_stays_editable(person, place):
+    found = person().post("/items/found", json=found_body(place)).json()
+    assert found["can_edit"] is True
+    assert found["answers_lost_id"] is None
+
+
+def test_i_found_this_needs_an_open_lost_report_of_someone_else(person, place):
+    owner, finder = person(), person()
+    lost_id = owner.post("/items/lost", json=lost_body(place)).json()["id"]
+    assert owner.post("/items/found", json=found_body(place, for_lost_id=lost_id)).status_code == 400
+    owner.post(f"/items/{lost_id}/close", json={"outcome": "CLOSED"})
+    assert finder.post("/items/found", json=found_body(place, for_lost_id=lost_id)).status_code == 400
+
+
+def test_finder_can_change_the_office_before_handing_in(person, place, db):
+    other = Office(name="Other Office", location_description="Hall 5", opening_hours="9 to 5")
+    db.add(other)
+    db.commit()
+    finder = person()
+    item_id = finder.post("/items/found", json=found_body(place)).json()["id"]
+    changed = finder.put(f"/items/{item_id}/dropoff-office", json={"office_id": other.id})
+    assert changed.status_code == 200
+    assert changed.json()["dropoff_office"]["id"] == other.id
+    # Nobody else can, and not after hand-in.
+    assert person().put(f"/items/{item_id}/dropoff-office", json={"office_id": other.id}).status_code == 404
+    assert finder.put(f"/items/{item_id}/dropoff-office", json={"office_id": 999999}).status_code == 400
+    receive(db, item_id)
+    assert finder.put(f"/items/{item_id}/dropoff-office", json={"office_id": place["office"]}).status_code == 403
+
+
+def test_finder_can_cancel_before_handing_in(person, place, db):
+    finder = person()
+    item_id = finder.post("/items/found", json=found_body(place)).json()["id"]
+    assert person().delete(f"/items/{item_id}").status_code == 404  # someone else
+    assert finder.delete(f"/items/{item_id}").status_code == 204
+    assert finder.get(f"/items/{item_id}").status_code == 404
+    # After hand-in it can't be cancelled any more.
+    held_id = finder.post("/items/found", json=found_body(place)).json()["id"]
+    receive(db, held_id)
+    assert finder.delete(f"/items/{held_id}").status_code == 403

@@ -7,6 +7,10 @@
 }
 
 .filters {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px 0;
   display: grid;
   grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 1fr) auto;
   gap: 0 1rem;
@@ -27,23 +31,35 @@
 
 .count {
   min-height: 1.5rem;
-  color: var(--muted);
-  margin-bottom: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 1rem 0 0.75rem;
 }
 
-/* As many columns as fit, each at least 15rem wide. */
+/* As many columns as fit, each at least 212px wide (150px on phones). */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 760px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
 }
 
 .empty {
   background: var(--surface);
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  padding: 2rem 1.5rem;
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 1.5rem;
   text-align: center;
+  color: var(--ink-soft);
 }
 
 .empty p {

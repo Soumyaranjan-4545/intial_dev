@@ -29,37 +29,21 @@ function strength(score) {
 
 export default function SimilarItems({ item }) {
   const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     apiFetch(`/items/${item.id}/similar`)
       .then(setResult)
-      .catch((err) => setError(err.message));
+      .catch(() => setResult(null)); // on failure the section stays hidden
   }, [item.id]);
 
   const isLost = item.kind === "LOST";
 
+  // Show nothing until we know matching is switched on: while it's off (the
+  // placeholder matcher), or if loading fails, the section is hidden.
+  if (!result || !result.enabled) return null;
+
   let body;
-  if (error) {
-    body = <p className={styles.muted}>Couldn't load suggestions: {error}</p>;
-  } else if (!result) {
-    body = <p className="loading">Looking for similar items…</p>;
-  } else if (!result.enabled) {
-    body = (
-      <p className={styles.muted}>
-        Automatic matching isn't switched on yet.{" "}
-        {isLost ? (
-          <>
-            Meanwhile, look through the <Link href="/found">Found items</Link> yourself.
-          </>
-        ) : (
-          <>
-            Meanwhile, the owner may be on the <Link href="/lost">Lost items</Link> page.
-          </>
-        )}
-      </p>
-    );
-  } else if (result.matches.length === 0) {
+  if (result.matches.length === 0) {
     body = (
       <p className={styles.muted}>
         Nothing similar yet. New {isLost ? "found items" : "lost reports"} are checked as they come in, so look again

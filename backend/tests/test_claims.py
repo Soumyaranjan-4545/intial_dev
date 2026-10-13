@@ -54,7 +54,6 @@ def held_item(person, place):
     body = {
         "title": "Black backpack", "description": "Wildcraft backpack.", "category_id": place["bags"],
         "location_text": "Library", "happened_on": str(today()), "dropoff_office_id": place["office"],
-        "secret_detail": "Name written inside the front pocket",
     }
     item_id = finder.post("/items/found", json=body).json()["id"]
     assert guard.post(f"/staff/items/{item_id}/receive", json={"office_id": place["office"]}).status_code == 200
@@ -67,7 +66,7 @@ def claim(client, item_id, description=DESCRIPTION):
 
 def approve(guard, claim_id):
     assert guard.post(f"/staff/claims/{claim_id}/start-review").status_code == 200
-    return guard.post(f"/staff/claims/{claim_id}/approve", json={"note": "Matches the secret detail"})
+    return guard.post(f"/staff/claims/{claim_id}/approve", json={"note": "Matches the item"})
 
 
 # ---------------- Submitting ----------------
@@ -81,8 +80,8 @@ def test_submit_claim_marks_item_claim_pending(person, held_item):
     assert body["status"] == "SUBMITTED"
     assert body["ref"].startswith("CLM-")
     assert body["is_mine"] and body["can_withdraw"] and body["can_add_proof"]
-    # The claimant never sees the secret detail or other claims.
-    assert body["secret_detail"] is None and body["claimant"] is None and body["other_claims"] == []
+    # The claimant never sees staff details or other claims.
+    assert body["claimant"] is None and body["other_claims"] == []
 
     item = owner.get(f"/items/{held_item['id']}").json()
     assert item["status"] == "CLAIM_PENDING"
@@ -90,8 +89,9 @@ def test_submit_claim_marks_item_claim_pending(person, held_item):
     assert item["my_claim"]["ref"] == body["ref"]
 
 
-def test_description_is_required_and_meaningful(person, held_item):
-    assert claim(person(), held_item["id"], "mine").status_code == 422
+def test_description_is_required_but_one_character_is_enough(person, held_item):
+    assert claim(person(), held_item["id"], "   ").status_code == 422  # blank (only spaces)
+    assert claim(person(), held_item["id"], "x").status_code == 201
 
 
 def test_finder_cannot_claim_their_own_report(held_item):
@@ -148,11 +148,10 @@ def test_students_cannot_review(person, held_item):
     assert owner.post(f"/staff/claims/{claim_id}/approve", json={}).status_code == 403
 
 
-def test_staff_see_secret_and_claimant(person, held_item):
+def test_staff_see_claimant(person, held_item):
     owner = person(name="Asha Verma")
     claim_id = claim(owner, held_item["id"]).json()["id"]
     body = held_item["guard"].get(f"/claims/{claim_id}").json()
-    assert body["secret_detail"] == "Name written inside the front pocket"
     assert body["claimant"]["full_name"] == "Asha Verma"
     assert body["can_start_review"] and not body["can_approve"]  # must start review first
 
@@ -311,3 +310,10 @@ def test_my_claims_and_staff_tabs(person, held_item):
 
     item = guard.get(f"/items/{held_item['id']}").json()
     assert [c["id"] for c in item["claims"]] == [claim_id]
+
+
+def test_staff_cannot_claim(person, held_item):
+    for guard in (held_item["guard"], person(UserRole.ADMIN)):
+        detail = guard.get(f"/items/{held_item['id']}").json()
+        assert detail["can_claim"] is False  # so the page shows no "Is this yours?" box
+        assert claim(guard, held_item["id"]).status_code == 403

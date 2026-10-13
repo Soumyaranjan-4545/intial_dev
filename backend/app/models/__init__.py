@@ -7,7 +7,7 @@ from app.models.base import Base
 from app.models.category import Category
 from app.models.claim import OPEN_CLAIM_STATUSES, Claim, ClaimEvent, ClaimProof, ClaimStatus
 from app.models.custody import CustodyEvent, CustodyEventType
-from app.models.item import Item, ItemKind, ItemPhoto, ItemStatus, SecretSource
+from app.models.item import Item, ItemKind, ItemPhoto, ItemStatus
 from app.models.office import Office
 from app.models.user import User, UserRole
 
@@ -27,7 +27,6 @@ __all__ = [
     "ItemStatus",
     "LoginCode",
     "Office",
-    "SecretSource",
     "User",
     "UserRole",
     "UserSession",

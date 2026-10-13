@@ -1,35 +1,30 @@
-.section {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.5rem;
-  margin: 1.5rem 0;
+/* Home: two stacked sections, "Recently reported lost" and "found". */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
 }
 
-/* Label / value pairs side by side, stacking on narrow screens. */
-.details {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.5rem 1.5rem;
-  margin: 0.75rem 0 0;
+/* Section title on the left, "See all" link on the right. */
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-.details dt {
-  color: var(--muted);
-}
-
-.details dd {
+.sectionHead h2 {
   margin: 0;
-  overflow-wrap: anywhere; /* long emails wrap instead of overflowing */
 }
 
-@media (max-width: 30rem) {
-  .details {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  .details dd {
-    margin-bottom: 0.75rem;
-  }
+.seeAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-decoration: none;
 }

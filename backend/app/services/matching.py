@@ -63,7 +63,7 @@ class Matcher(Protocol):
 
     def find_similar(self, db: Session, item: Item, limit: int) -> list[Match]:
         """Return up to `limit` candidate items of the OPPOSITE kind, best first.
-        Must not change the database. Must not use item.secret_detail."""
+        Must not change the database."""
         ...
 
     def item_saved(self, db: Session, item: Item) -> None:

@@ -5,9 +5,9 @@
  *
  *  Claimant: what to do next (wait, visit the office, collect), their own
  *            description and proof, and the history. Can withdraw.
- *  Staff:    also the claimant's contact details, the item's SECRET detail
- *            next to the claimant's description (to compare), other claims
- *            on the same item, and the review buttons.
+ *  Staff:    also the claimant's contact details, other claims on the
+ *            same item, and the review buttons. Staff check the claimant's
+ *            description against the item itself, which they're holding.
  *
  * The backend decides who sees what and sends can_* flags; this page only
  * shows the buttons it's told are allowed.
@@ -84,6 +84,8 @@ function ClaimDetail() {
         </p>
       </header>
 
+      <Tracker claim={claim} />
+
       <ItemBrief item={claim.item} />
 
       {claim.is_mine && <NextStep claim={claim} />}
@@ -100,6 +102,40 @@ function ClaimDetail() {
 
       {claim.can_withdraw && <Withdraw claim={claim} onChanged={setClaim} />}
     </article>
+  );
+}
+
+// The happy path, left to right. A claim that ends early (rejected,
+// withdrawn, expired, closed) shows red from the step where it stopped.
+const TRACK = [
+  { status: "SUBMITTED", label: "Sent" },
+  { status: "UNDER_REVIEW", label: "Review" },
+  { status: "APPROVED", label: "Approved" },
+  { status: "COLLECTED", label: "Collected" },
+];
+const STEP_OF = { SUBMITTED: 0, UNDER_REVIEW: 1, NEEDS_MORE_INFO: 1, APPROVED: 2, COLLECTED: 3 };
+
+function Tracker({ claim }) {
+  // Furthest step the claim reached, from its history.
+  const reached = Math.max(0, ...claim.events.map((e) => STEP_OF[e.to_status] ?? 0));
+  const deadEnd = !(claim.status in STEP_OF);
+  return (
+    <ol className={styles.tracker} aria-label="Claim progress">
+      {TRACK.map((step, index) => {
+        let state = "todo";
+        if (index < reached) state = "done";
+        else if (index === reached) state = deadEnd ? "dead" : "current";
+        const label =
+          index === 1 && claim.status === "NEEDS_MORE_INFO" ? "Office visit" : state === "dead" ? `${step.label}: stopped` : step.label;
+        return (
+          <li key={step.status} className={styles.trackStep} data-state={state}>
+            <span className={styles.trackNum}>{index + 1}</span>
+            {label}
+            {state === "current" && <span className="visually-hidden"> (current step)</span>}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -378,11 +414,12 @@ function StaffReview({ claim, onChanged }) {
         </p>
       )}
 
+      <p className={styles.muted}>
+        Check the claimant&apos;s description below against the item itself:{" "}
+        <Link href={`/items/${claim.item.id}`}>{claim.item.ref}</Link>. Ask for an office visit if you can&apos;t be sure.
+      </p>
+
       <div className={styles.compare}>
-        <div>
-          <h3 className={styles.subheading}>Secret detail recorded at hand-in</h3>
-          <p className={styles.secret}>{claim.secret_detail || "None recorded."}</p>
-        </div>
         <div>
           <h3 className={styles.subheading}>Claimant</h3>
           <p>

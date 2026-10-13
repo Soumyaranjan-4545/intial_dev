@@ -3,7 +3,7 @@
 /**
  * "This is mine": the claim form for a found item.
  *
- * The claimant describes something only the owner would know (required),
+ * The claimant describes how they can show it's theirs (required),
  * and may add up to 3 proof images. The claim is created first; the images
  * are then uploaded one by one to that claim. If an image fails, the claim
  * still exists and the claimant can add it again from the claim page.
@@ -19,7 +19,7 @@ import styles from "../item.module.css";
 import claimStyles from "./claim.module.css";
 
 const MAX_PROOFS = 3;
-const MIN_LENGTH = 20;
+const MIN_LENGTH = 1;
 
 export default function ClaimFormPage() {
   return (
@@ -68,7 +68,7 @@ function ClaimForm() {
   async function submit(event) {
     event.preventDefault();
     if (description.trim().length < MIN_LENGTH) {
-      setFieldError(`Please write at least ${MIN_LENGTH} characters, so the guard can check it's yours.`);
+      setFieldError("Please write something, so the guard can check it's yours.");
       return;
     }
     setBusy(true);
@@ -132,7 +132,7 @@ function ClaimForm() {
       <h1>This is mine</h1>
       <p className="lede">
         Tell us something about <strong>{item.title}</strong> ({item.ref}) that only the owner would know. A
-        security guard compares it with what was recorded when the item was handed in.
+        security guard checks it against the item they&apos;re holding.
       </p>
 
       <div className={claimStyles.itemBrief}>
@@ -158,7 +158,7 @@ function ClaimForm() {
           <label htmlFor="description">How can you show it's yours?</label>
           <span className="hint" id="description-hint">
             For example: what's inside, a scratch or sticker, the lock-screen picture, a name written on it. Don't
-            just repeat the public description. At least {MIN_LENGTH} characters.
+            just repeat the public description.
           </span>
           <textarea
             id="description"

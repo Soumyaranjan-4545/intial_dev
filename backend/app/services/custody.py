@@ -26,7 +26,6 @@ from app.models import (
     ItemKind,
     ItemStatus,
     Office,
-    SecretSource,
     User,
 )
 from app.models.item import HELD_STATUSES
@@ -99,14 +98,6 @@ def receive_item(db: Session, item: Item, actor: User, data: ReceiveIn) -> Item:
     _require(can_receive(item, actor), "Only found items waiting for drop-off can be received.")
     office = _open_office(db, data.office_id)
 
-    # The guard can keep the finder's secret detail, correct it, or add one.
-    if data.secret_detail and data.secret_detail != item.secret_detail:
-        item.secret_detail = data.secret_detail
-        item.secret_detail_by = SecretSource.GUARD
-    if not item.secret_detail:
-        # No secret, no receipt: it's how claims will be checked.
-        raise bad_request("Record a secret identifying detail before receiving the item.")
-
     item.status = ItemStatus.IN_CUSTODY
     # Set relationships (not just id columns), so the object in memory is
     # up to date straight away.
@@ -127,15 +118,13 @@ def register_walk_in(db: Session, actor: User, data: WalkInIn) -> Item:
     # Same checks as a normal report (category exists, date not in the future...).
     items_service._check_common(db, data)
 
-    fields = data.model_dump(exclude={"office_id", "handed_in_by", "secret_detail"})
+    fields = data.model_dump(exclude={"office_id", "handed_in_by"})
     item = Item(
         kind=ItemKind.FOUND,
         status=ItemStatus.IN_CUSTODY,
         reporter=actor,
         dropoff_office=office,
         current_office=office,
-        secret_detail=data.secret_detail,
-        secret_detail_by=SecretSource.GUARD,
         received_by=actor,
         received_at=now(),
         **fields,

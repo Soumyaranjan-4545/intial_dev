@@ -2,7 +2,7 @@
 
 Everyone signed in sees what was returned, where from and when. Staff also
 see who collected it, the claim, the guard who handed it over, and notes.
-Nobody ever sees the secret detail or proof images here.
+Nobody ever sees proof images here.
 
 Records disappear completely 60 days after returned_at (services/jobs.py).
 """

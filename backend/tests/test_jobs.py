@@ -57,8 +57,7 @@ def person(make_user, sign_in):
 
 def report_found(client, place, category="bags", title="Black backpack"):
     body = {"title": title, "description": "A backpack.", "category_id": place[category],
-            "location_text": "Library", "happened_on": str(today()), "dropoff_office_id": place["office"],
-            "secret_detail": "Name inside the front pocket"}
+            "location_text": "Library", "happened_on": str(today()), "dropoff_office_id": place["office"]}
     return client.post("/items/found", json=body).json()["id"]
 
 
@@ -191,9 +190,9 @@ def test_returned_page_public_view(person, place):
     assert row["returned_at"] is not None
     assert row["cover_photo_id"] is not None
     assert row["staff"] is None  # students don't see who collected it
-    # The item page and its photo can be opened, but never the secret.
+    # The item page and its photo can be opened, but not the staff history.
     detail = student.get(f"/items/{done['item']}").json()
-    assert detail["secret_detail"] is None and detail["custody_events"] == []
+    assert detail["custody_events"] == []
     assert student.get(f"/items/{done['item']}/photos/{row['cover_photo_id']}").status_code == 200
 
 

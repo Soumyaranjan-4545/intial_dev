@@ -14,12 +14,12 @@ from app.core.errors import forbidden, not_found
 from app.models import ItemKind, ItemPhoto
 from app.schemas.item import (
     CloseLostIn,
+    DropoffOfficeIn,
     FoundItemIn,
     ItemDetailOut,
     ItemPage,
     LostItemIn,
     ReturnedPage,
-    SecretDetailIn,
     SimilarOut,
 )
 from app.services import items as items_service
@@ -99,12 +99,29 @@ def similar_items(item_id: int, user: OnboardedUser, db: DbSession):
     return matching.similar_items(db, item)
 
 
-@router.put("/{item_id}/secret-detail", response_model=ItemDetailOut)
-def update_secret(item_id: int, data: SecretDetailIn, user: OnboardedUser, db: DbSession):
-    """The finder can change the secret detail until drop-off."""
+@router.put("/{item_id}", response_model=ItemDetailOut)
+def edit_report(item_id: int, data: LostItemIn, user: OnboardedUser, db: DbSession):
+    """The reporter corrects their report (name, category, colour, brand,
+    description, place, date). Send all fields, as in the report form.
+    Allowed while a lost report is open, or a found item isn't handed in yet."""
     item = items_service.get_visible_item(db, item_id, user)
-    items_service.update_secret(db, item, user, data)
+    items_service.update_report(db, item, user, data)
     return items_service.detail_for(db, item, user)
+
+
+@router.put("/{item_id}/dropoff-office", response_model=ItemDetailOut)
+def change_dropoff_office(item_id: int, data: DropoffOfficeIn, user: OnboardedUser, db: DbSession):
+    """The finder picks a different office to hand the item in at (before hand-in)."""
+    item = items_service.get_visible_item(db, item_id, user)
+    items_service.change_dropoff(db, item, user, data.office_id)
+    return items_service.detail_for(db, item, user)
+
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_found_report(item_id: int, user: OnboardedUser, db: DbSession):
+    """The finder withdraws a found report they haven't handed in yet."""
+    item = items_service.get_visible_item(db, item_id, user)
+    items_service.cancel_found(db, item, user)
 
 
 @router.post("/{item_id}/close", response_model=ItemDetailOut)
@@ -121,6 +138,14 @@ async def upload_photo(item_id: int, user: OnboardedUser, db: DbSession, file: U
     item = items_service.get_visible_item(db, item_id, user)
     data, content_type, extension = await storage.read_image(file)
     items_service.add_photo(db, item, user, data, content_type, extension)
+    return items_service.detail_for(db, item, user)
+
+
+@router.delete("/{item_id}/photos/{photo_id}", response_model=ItemDetailOut)
+def delete_photo(item_id: int, photo_id: int, user: OnboardedUser, db: DbSession):
+    """Remove a photo (e.g. to replace it with a better one)."""
+    item = items_service.get_visible_item(db, item_id, user)
+    items_service.remove_photo(db, item, user, photo_id)
     return items_service.detail_for(db, item, user)
 
 

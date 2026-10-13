@@ -1,12 +1,14 @@
 /**
- * One item in a grid (Found page, Lost page, My reports).
- * The whole card links to the item's page.
+ * One item as a "tag" in a grid (Found, Lost, Returned, My reports, Home).
+ * The whole card links to the item's page. A small tilted stamp in the
+ * corner says LOST or FOUND, like a rubber stamp on a lost-property tag.
  */
 
+import { Building2, Clock, ImageOff, MapPin } from "lucide-react";
 import Link from "next/link";
 
 import { photoUrl } from "@/lib/api";
-import { FINISHED_STATUSES, STATUS_LABELS, formatDate } from "@/lib/labels";
+import { FINISHED_STATUSES, STATUS_LABELS, daysAgo } from "@/lib/labels";
 import styles from "./ItemCard.module.css";
 
 // fadeFinished: grey out returned/closed items (useful in My reports, where
@@ -14,6 +16,7 @@ import styles from "./ItemCard.module.css";
 export default function ItemCard({ item, showStatus = false, extraAction = null, fadeFinished = true }) {
   const isFound = item.kind === "FOUND";
   const finished = fadeFinished && FINISHED_STATUSES.includes(item.status);
+  const stamp = item.status === "RETURNED" ? "Returned" : isFound ? "Found" : "Lost";
 
   return (
     <article className={`${styles.card} ${finished ? styles.finished : ""}`}>
@@ -24,18 +27,35 @@ export default function ItemCard({ item, showStatus = false, extraAction = null,
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photoUrl(item.id, item.cover_photo_id)} alt="" loading="lazy" />
           ) : (
-            <span className={styles.noPhoto}>{item.category.name}</span>
+            <span className={styles.noPhoto}>
+              <ImageOff size={22} strokeWidth={1.5} aria-hidden="true" />
+              {item.category.name}
+            </span>
           )}
+          <span className={styles.stamp} data-kind={item.status === "RETURNED" ? "RETURNED" : item.kind}>
+            {stamp}
+          </span>
         </div>
         <div className={styles.body}>
-          {showStatus && <span className={styles.status}>{STATUS_LABELS[item.status]}</span>}
+          <span className={styles.ref}>{item.ref}</span>
           <h3 className={styles.title}>{item.title}</h3>
+          {showStatus && <span className={`pill ${styles.status}`}>{STATUS_LABELS[item.status]}</span>}
           <p className={styles.meta}>
-            {isFound ? "Found" : "Lost"} at {item.location_text}
-            <br />
-            on {formatDate(item.happened_on)}
+            <span>
+              <MapPin size={13} strokeWidth={1.8} aria-hidden="true" />
+              {item.location_text}
+            </span>
+            <span>
+              <Clock size={13} strokeWidth={1.8} aria-hidden="true" />
+              {isFound ? "Found" : "Lost"} {daysAgo(item.happened_on)}
+            </span>
+            {isFound && item.current_office && (
+              <span>
+                <Building2 size={13} strokeWidth={1.8} aria-hidden="true" />
+                {item.current_office.name}
+              </span>
+            )}
           </p>
-          {isFound && item.current_office && <p className={styles.office}>Held at {item.current_office.name}</p>}
         </div>
       </Link>
       {extraAction && <div className={styles.action}>{extraAction}</div>}

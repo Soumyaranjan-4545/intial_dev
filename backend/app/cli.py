@@ -30,16 +30,15 @@ from app.models import (
     ItemKind,
     ItemStatus,
     Office,
-    SecretSource,
     User,
     UserRole,
 )
-from app.services.auth import check_allowed_domain, normalize_email
+from app.services.auth import check_staff_email, normalize_email
 
 
 def make_admin(raw_email: str) -> None:
     email = normalize_email(raw_email)
-    check_allowed_domain(email)
+    check_staff_email(email)  # @iitk.ac.in or @gmail.com
     with SessionLocal() as db, db.begin():
         user = db.scalar(select(User).where(User.email == email))
         if user is None:
@@ -98,8 +97,6 @@ def demo_items(count: int) -> None:
                 item.status = ItemStatus.IN_CUSTODY
                 item.dropoff_office_id = office.id
                 item.current_office_id = office.id
-                item.secret_detail = "Demo secret detail"
-                item.secret_detail_by = SecretSource.GUARD
                 item.received_at = now()
                 item.custody_events.append(
                     CustodyEvent(event_type=CustodyEventType.REGISTERED, to_office=office, note="Demo item")

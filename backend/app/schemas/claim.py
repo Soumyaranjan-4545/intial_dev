@@ -18,8 +18,8 @@ def _strip(value):
 
 
 class ClaimIn(BaseModel):
-    # Long enough to say something real: what's inside, marks, the lock screen...
-    description: str = Field(min_length=20, max_length=2000)
+    # At least 1 character; the more detail (what's inside, marks...), the better.
+    description: str = Field(min_length=1, max_length=2000)
 
     @field_validator("description", mode="before")
     @classmethod
@@ -113,7 +113,6 @@ class ClaimOut(BaseModel):
     on_hold: bool
     # ---- Staff only (empty / false for the claimant) ----
     claimant: ClaimantOut | None
-    secret_detail: str | None
     other_claims: list[OtherClaimOut]
     can_start_review: bool
     can_request_info: bool

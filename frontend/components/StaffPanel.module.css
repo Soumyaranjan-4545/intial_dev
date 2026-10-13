@@ -29,25 +29,6 @@
   color: var(--muted);
 }
 
-.choice {
-  display: flex;
-  gap: 1.5rem;
-  border: none;
-  padding: 0;
-  margin: 0 0 1rem;
-}
-
-.choice label {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.warning {
-  color: var(--string);
-  font-weight: 700;
-}
-
 .history {
   margin: 0;
   padding-left: 1.25rem;

@@ -62,7 +62,7 @@ class Claim(TimestampMixin, Base):
     claimant: Mapped[User] = relationship(foreign_keys=[claimant_id])
 
     # The claimant's proof, in their own words. Compared with the item's
-    # secret detail by staff. Never shown to other students.
+    # item itself by staff. Never shown to other students.
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[ClaimStatus] = mapped_column(_text_enum("claim_status"), default=ClaimStatus.SUBMITTED)
 

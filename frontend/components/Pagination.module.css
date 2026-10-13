@@ -22,10 +22,12 @@
   min-width: 2.5rem;
   padding: 0.5rem 0.75rem;
   text-align: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
   background: var(--surface);
-  color: var(--accent);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
   text-decoration: none;
 }
 
@@ -35,10 +37,11 @@
 }
 
 .number[aria-current="page"] {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--brand);
+  border-color: var(--brand);
   color: #ffffff;
   font-weight: 700;
+  box-shadow: var(--shadow-2);
 }
 
 .gap {

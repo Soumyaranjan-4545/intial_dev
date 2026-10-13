@@ -2,11 +2,12 @@
 
 /**
  * One item's page. What's shown depends on who's looking; the backend
- * decides, and sends flags like can_close and can_edit_secret.
+ * decides, and sends flags like can_close and can_claim.
  */
 
+import { ImageOff, Pencil, Plus, X } from "lucide-react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
@@ -14,15 +15,31 @@ import { useAuth } from "@/components/AuthProvider";
 import SimilarItems from "@/components/SimilarItems";
 import StaffPanel from "@/components/StaffPanel";
 import { apiFetch, apiUpload, photoUrl } from "@/lib/api";
-import { CLAIM_STATUS_LABELS, OPEN_CLAIM_STATUSES, STATUS_LABELS, formatDate, formatDateTime } from "@/lib/labels";
+import {
+  CLAIM_STATUS_LABELS,
+  OPEN_CLAIM_STATUSES,
+  STATUS_LABELS,
+  formatDate,
+  formatDateTime,
+  todayIso,
+} from "@/lib/labels";
 import styles from "./item.module.css";
+
+// Colour of the status pill under the title.
+const STATUS_PILL = {
+  AWAITING_DROPOFF: "pill-amber",
+  IN_CUSTODY: "pill-found",
+  CLAIM_PENDING: "pill-brand",
+  RETURNED: "pill-found",
+  OPEN: "pill-lost",
+};
 
 // Statuses shown on the public Found and Lost pages.
 const PUBLIC = ["IN_CUSTODY", "CLAIM_PENDING", "OPEN"];
 
 export default function ItemPage() {
   return (
-    <AppShell>
+    <AppShell wide>
       <Suspense fallback={<p className="loading">Loading…</p>}>
         <ItemDetail />
       </Suspense>
@@ -36,7 +53,6 @@ function ItemDetail() {
   const { user } = useAuth();
   const [item, setItem] = useState(null);
   const [error, setError] = useState("");
-  const [shownPhoto, setShownPhoto] = useState(0);
 
   const load = useCallback(() => {
     apiFetch(`/items/${id}`)
@@ -90,122 +106,191 @@ function ItemDetail() {
       </p>
 
       <header className={styles.header}>
+        <span className={styles.ref}>
+          {item.ref}
+          <span className={styles.stamp} data-kind={item.status === "RETURNED" ? "RETURNED" : item.kind}>
+            {item.status === "RETURNED" ? "Returned" : isFound ? "Found" : "Lost"}
+          </span>
+        </span>
         <h1>{item.title}</h1>
-        <p className={styles.ref}>
-          {item.ref}, {STATUS_LABELS[item.status].toLowerCase()}
-        </p>
+        <span className={`pill ${STATUS_PILL[item.status] || ""}`}>{STATUS_LABELS[item.status]}</span>
       </header>
 
-      {item.photo_ids.length > 0 && (
-        <div className={styles.gallery}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className={styles.mainPhoto}
-            src={photoUrl(item.id, item.photo_ids[shownPhoto] ?? item.photo_ids[0])}
-            alt={`Photo of ${item.title}`}
-          />
-          {item.photo_ids.length > 1 && (
-            <div className={styles.thumbs}>
-              {item.photo_ids.map((photoId, index) => (
-                <button
-                  key={photoId}
-                  type="button"
-                  className={styles.thumb}
-                  aria-label={`Show photo ${index + 1}`}
-                  aria-pressed={index === shownPhoto}
-                  onClick={() => setShownPhoto(index)}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photoUrl(item.id, photoId)} alt="" />
-                </button>
+
+
+
+
+
+
+
+      <div className={styles.layout}>
+        <div className={styles.mainCol}>
+          <Gallery item={item} onChanged={setItem} />
+          <DetailsPanel item={item} onSaved={setItem} />
+          {item.can_see_similar && <SimilarItems item={item} />}
+
+          {isStaff && isFound && item.claims.length > 0 && <ItemClaims claims={item.claims} />}
+
+          {isStaff && isFound && <StaffPanel item={item} onChanged={setItem} />}
+
+        </div>
+
+        <aside className={styles.sideCol}>
+          {/* What happens next: only for the finder, before hand-in. */}
+          {isFound && item.status === "AWAITING_DROPOFF" && item.is_mine && item.dropoff_office && (
+            <HandInBox item={item} onChanged={setItem} />
+          )}
+          {isFound && item.current_office_full && (
+            <section className={styles.office} aria-labelledby="where-held">
+              <h2 id="where-held">Where it's held</h2>
+              <p>
+                <strong>{item.current_office_full.name}</strong>
+                <br />
+                {item.current_office_full.location_description}
+                <br />
+                Open {item.current_office_full.opening_hours}
+              </p>
+            </section>
+          )}
+          {item.returned_at && (
+            <p className="success" role="status">
+              Returned to its owner on {formatDateTime(item.returned_at)}.
+            </p>
+          )}
+          {isFound && <ClaimBox item={item} />}
+          {!isFound && !item.is_mine && item.status === "OPEN" && (
+            <section className={styles.panel}>
+              <h2>Found it?</h2>
+              <p>Hand it in at a security office and tell us what you found.</p>
+              <Link href={`/report/found?for=${item.id}`} className="button">
+                I found this
+              </Link>
+            </section>
+          )}
+          {item.can_close && <CloseLost item={item} onClosed={setItem} />}
+        </aside>
+      </div>
+    </article>
+  );
+}
+
+/** For the finder before hand-in: where to take it, with "Change office"
+ * (a dropdown, right here) and "Cancel this report". */
+function HandInBox({ item, onChanged }) {
+  const router = useRouter();
+  const [mode, setMode] = useState(null); // null | "office" | "cancel"
+  const [offices, setOffices] = useState([]);
+  const [officeId, setOfficeId] = useState(String(item.dropoff_office.id));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  function startChanging() {
+    setMode("office");
+    setError("");
+    setOfficeId(String(item.dropoff_office.id));
+    if (!offices.length) apiFetch("/offices").then(setOffices).catch(() => setError("Couldn't load the office list."));
+  }
+
+  async function saveOffice(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await apiFetch(`/items/${item.id}/dropoff-office`, {
+        method: "PUT",
+        body: { office_id: Number(officeId) },
+      });
+      onChanged(updated);
+      setMode(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelReport() {
+    setBusy(true);
+    setError("");
+    try {
+      await apiFetch(`/items/${item.id}`, { method: "DELETE" });
+      router.push("/my-reports?cancelled=1");
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  const office = item.dropoff_office;
+  return (
+    <section className={styles.nextStep} aria-labelledby="next-step">
+      <h2 id="next-step">Next: hand it in</h2>
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
+
+      {mode === "office" ? (
+        <form onSubmit={saveOffice} className={styles.handInForm}>
+          <div className="field">
+            <label htmlFor="change-office">Hand it in at</label>
+            <select id="change-office" value={officeId} onChange={(e) => setOfficeId(e.target.value)}>
+              {(offices.length ? offices : [office]).map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
               ))}
-            </div>
+            </select>
+          </div>
+          <div className="button-row">
+            <button type="submit" className="button" disabled={busy || officeId === String(office.id)}>
+              {busy ? "Saving…" : "Save office"}
+            </button>
+            <button type="button" className="link-button" onClick={() => setMode(null)} disabled={busy}>
+              Back
+            </button>
+          </div>
+        </form>
+      ) : (
+        <p>
+          Take the item to <strong>{office.name}</strong>. {office.location_description}. Open {office.opening_hours}.
+        </p>
+      )}
+
+      {mode === "cancel" && (
+        <div className={styles.cancelConfirm} role="alert">
+          <p>Cancel this report? It will be deleted and can&apos;t be undone.</p>
+          <div className="button-row">
+            <button type="button" className="button button-danger" onClick={cancelReport} disabled={busy}>
+              {busy ? "Cancelling…" : "Yes, cancel it"}
+            </button>
+            <button type="button" className="link-button" onClick={() => setMode(null)} disabled={busy}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === null && (item.can_change_dropoff || item.can_cancel) && (
+        <div className={styles.handInActions}>
+          {item.can_change_dropoff && (
+            <button type="button" className="button button-secondary" onClick={startChanging}>
+              Change office
+            </button>
+          )}
+          {item.can_cancel && (
+            <button type="button" className="button button-danger" onClick={() => setMode("cancel")}>
+              Cancel this report
+            </button>
           )}
         </div>
       )}
 
-      {/* What happens next: only for the finder, before hand-in. */}
-      {isFound && item.status === "AWAITING_DROPOFF" && item.is_mine && item.dropoff_office && (
-        <section className={styles.nextStep} aria-labelledby="next-step">
-          <h2 id="next-step">Next: hand it in</h2>
-          <p>
-            Take the item to <strong>{item.dropoff_office.name}</strong>. {item.dropoff_office.location_description}.
-            Open {item.dropoff_office.opening_hours}.
-          </p>
-          <p>Only you can see this report until a guard receives the item. Then it appears on the Found page.</p>
-        </section>
-      )}
-
-      {isFound && item.current_office_full && (
-        <section className={styles.office} aria-labelledby="where-held">
-          <h2 id="where-held">Where it's held</h2>
-          <p>
-            <strong>{item.current_office_full.name}</strong>
-            <br />
-            {item.current_office_full.location_description}
-            <br />
-            Open {item.current_office_full.opening_hours}
-          </p>
-        </section>
-      )}
-
-      {isFound && <ClaimBox item={item} />}
-
-      {item.returned_at && (
-        <p className="success" role="status">
-          Returned to its owner on {formatDateTime(item.returned_at)}.
-        </p>
-      )}
-
-      <dl className={styles.facts}>
-        <dt>Category</dt>
-        <dd>{item.category.name}</dd>
-        {item.colour && (
-          <>
-            <dt>Colour</dt>
-            <dd>{item.colour}</dd>
-          </>
-        )}
-        {item.brand && (
-          <>
-            <dt>Brand</dt>
-            <dd>{item.brand}</dd>
-          </>
-        )}
-        <dt>{isFound ? "Found at" : "Lost at"}</dt>
-        <dd>{item.location_text}</dd>
-        <dt>{isFound ? "Found on" : "Lost on"}</dt>
-        <dd>{formatDate(item.happened_on)}</dd>
-      </dl>
-
-      <h2>Description</h2>
-      <p className={styles.description}>{item.description}</p>
-
-      {item.can_see_similar && <SimilarItems item={item} />}
-
-      {/* While receiving, the secret is checked in the Receive form instead. */}
-      {(item.can_edit_secret || (isStaff && isFound)) && !item.can_receive && (
-        <SecretDetail item={item} onSaved={setItem} />
-      )}
-
-      {isStaff && isFound && item.claims.length > 0 && <ItemClaims claims={item.claims} />}
-
-      {isStaff && isFound && <StaffPanel item={item} onChanged={setItem} />}
-
-      {item.can_add_photos && <AddPhoto itemId={item.id} onAdded={setItem} />}
-
-      {item.can_close && <CloseLost item={item} onClosed={setItem} />}
-
-      {!isFound && !item.is_mine && item.status === "OPEN" && (
-        <section className={styles.panel}>
-          <h2>Found it?</h2>
-          <p>Hand it in at a security office and tell us what you found.</p>
-          <Link href={`/report/found?for=${item.id}`} className="button">
-            I found this
-          </Link>
-        </section>
-      )}
-    </article>
+      <p className={styles.handInNote}>
+        Only you can see this report until a guard receives the item. Then it appears on the Found page.
+      </p>
+    </section>
   );
 }
 
@@ -265,88 +350,236 @@ function ItemClaims({ claims }) {
   );
 }
 
-/** The secret identifying detail: editable by the finder before hand-in,
- * visible to security staff. Everyone else never receives it from the API. */
-function SecretDetail({ item, onSaved }) {
+/** The Details box. The reporter sees "Edit" in its top-right corner;
+ * clicking it turns the box into a form right here (no separate page).
+ * Save sends PUT /items/{id}; the backend checks everything again. */
+function DetailsPanel({ item, onSaved }) {
+  const isFound = item.kind === "FOUND";
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(item.secret_detail || "");
+  const [form, setForm] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [busy, setBusy] = useState(false);
+
+  function startEditing() {
+    // Start from what's saved now. Empty optional fields become "".
+    setForm({
+      title: item.title,
+      category_id: String(item.category.id),
+      colour: item.colour || "",
+      brand: item.brand || "",
+      description: item.description,
+      location_text: item.location_text,
+      happened_on: item.happened_on,
+    });
+    setError("");
+    setFieldErrors({});
+    setEditing(true);
+    if (!categories.length) apiFetch("/categories").then(setCategories).catch(() => setCategories([]));
+  }
+
+  function update(event) {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    setFieldErrors((current) => ({ ...current, [name]: undefined }));
+  }
 
   async function save(event) {
     event.preventDefault();
+    const problems = {};
+    if (form.title.trim().length < 1) problems.title = "Please fill this in.";
+    if (form.description.trim().length < 1) problems.description = "Please fill this in.";
+    if (form.location_text.trim().length < 1) problems.location_text = "Please fill this in.";
+    if (!form.happened_on) problems.happened_on = "Choose the date.";
+    setFieldErrors(problems);
+    if (Object.keys(problems).length) return;
+
     setBusy(true);
     setError("");
     try {
-      const updated = await apiFetch(`/items/${item.id}/secret-detail`, {
+      const updated = await apiFetch(`/items/${item.id}`, {
         method: "PUT",
-        body: { secret_detail: text },
+        body: { ...form, category_id: Number(form.category_id) },
       });
       onSaved(updated);
       setEditing(false);
     } catch (err) {
-      setError(err.fieldErrors?.secret_detail || err.message);
+      setFieldErrors(err.fieldErrors || {});
+      setError(err.message);
     } finally {
       setBusy(false);
     }
   }
 
+  function field(name, label, input) {
+    return (
+      <div className="field">
+        <label htmlFor={`edit-${name}`}>{label}</label>
+        {input}
+        {fieldErrors[name] && <span className="field-error">{fieldErrors[name]}</span>}
+      </div>
+    );
+  }
+  const invalid = (name) => (fieldErrors[name] ? "true" : undefined);
+
   return (
-    <section className={styles.secret} aria-labelledby="secret-heading">
-      <h2 id="secret-heading">Secret identifying detail</h2>
-      <p className={styles.small}>
-        Only security staff{item.is_mine && item.status === "AWAITING_DROPOFF" ? " and you (until you hand it in)" : ""} can see this. It's
-        used to check who the item really belongs to.
-      </p>
-      {editing ? (
-        <form onSubmit={save}>
+    <section className={styles.detailsPanel} aria-labelledby="details-heading">
+      <div className={styles.panelHead}>
+        <h2 id="details-heading" className={styles.panelTitle}>
+          {editing ? "Edit details" : "Details"}
+        </h2>
+        {item.can_edit && !editing && (
+          <button type="button" className={styles.editLink} onClick={startEditing}>
+            <Pencil size={14} aria-hidden="true" /> Edit
+          </button>
+        )}
+      </div>
+
+      {!editing ? (
+        <>
+          <dl className={styles.facts}>
+            <dt>Category</dt>
+            <dd>{item.category.name}</dd>
+            {item.colour && (
+              <>
+                <dt>Colour</dt>
+                <dd>{item.colour}</dd>
+              </>
+            )}
+            {item.brand && (
+              <>
+                <dt>Brand</dt>
+                <dd>{item.brand}</dd>
+              </>
+            )}
+            <dt>{isFound ? "Found at" : "Lost at"}</dt>
+            <dd>{item.location_text}</dd>
+            <dt>{isFound ? "Found on" : "Lost on"}</dt>
+            <dd>{formatDate(item.happened_on)}</dd>
+            {item.answers_lost_ref && (
+              <>
+                <dt>Lost report</dt>
+                <dd>
+                  <Link href={`/items/${item.answers_lost_id}`}>{item.answers_lost_ref}</Link>
+                </dd>
+              </>
+            )}
+          </dl>
+          {/* "I found this" reports: the details are the owner's, so no Edit. */}
+          {item.answers_lost_ref && item.is_mine && item.status === "AWAITING_DROPOFF" && (
+            <p className={styles.small}>
+              These details come from the owner&apos;s lost report, so they can&apos;t be edited here.
+            </p>
+          )}
+          <h3 className={styles.descTitle}>Description</h3>
+          <p className={styles.description}>{item.description}</p>
+        </>
+      ) : (
+        <form onSubmit={save} noValidate className={styles.editForm}>
           {error && (
             <div className="alert" role="alert">
               {error}
             </div>
           )}
-          <div className="field">
-            <label htmlFor="secret">Secret detail</label>
-            <textarea id="secret" value={text} onChange={(e) => setText(e.target.value)} maxLength={300} />
+          {field(
+            "title",
+            "Item name",
+            <input id="edit-title" name="title" value={form.title} onChange={update} maxLength={120} aria-invalid={invalid("title")} />,
+          )}
+          {field(
+            "category_id",
+            "Category",
+            <select id="edit-category_id" name="category_id" value={form.category_id} onChange={update}>
+              {/* Until the list loads, show the current category so the value is never blank. */}
+              {(categories.length ? categories : [item.category]).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>,
+          )}
+          <div className="form-row">
+            {field("colour", "Colour (optional)", <input id="edit-colour" name="colour" value={form.colour} onChange={update} maxLength={40} />)}
+            {field("brand", "Brand (optional)", <input id="edit-brand" name="brand" value={form.brand} onChange={update} maxLength={60} />)}
           </div>
+          <div className="form-row">
+            {field(
+              "location_text",
+              isFound ? "Found at" : "Lost at",
+              <input id="edit-location_text" name="location_text" value={form.location_text} onChange={update} maxLength={200} aria-invalid={invalid("location_text")} />,
+            )}
+            {field(
+              "happened_on",
+              isFound ? "Found on" : "Lost on",
+              <input id="edit-happened_on" name="happened_on" type="date" max={todayIso()} value={form.happened_on} onChange={update} aria-invalid={invalid("happened_on")} />,
+            )}
+          </div>
+          {field(
+            "description",
+            "Description",
+            <textarea id="edit-description" name="description" value={form.description} onChange={update} maxLength={1000} aria-invalid={invalid("description")} />,
+          )}
           <div className="button-row">
             <button type="submit" className="button" disabled={busy}>
-              {busy ? "Saving…" : "Save secret detail"}
+              {busy ? "Saving…" : "Save changes"}
             </button>
-            <button type="button" className="link-button" onClick={() => setEditing(false)}>
+            <button type="button" className="link-button" onClick={() => setEditing(false)} disabled={busy}>
               Cancel
             </button>
           </div>
         </form>
-      ) : (
-        <>
-          <p>{item.secret_detail || "None recorded yet. The guard will add one when it's handed in."}</p>
-          {item.secret_detail_by && (
-            <p className={styles.small}>Recorded by the {item.secret_detail_by === "GUARD" ? "guard" : "finder"}.</p>
-          )}
-          {item.can_edit_secret && (
-            <button type="button" className="button button-secondary" onClick={() => setEditing(true)}>
-              {item.secret_detail ? "Change secret detail" : "Add secret detail"}
-            </button>
-          )}
-        </>
       )}
     </section>
   );
 }
 
-function AddPhoto({ itemId, onAdded }) {
+const MAX_PHOTOS = 3;
+
+/** The photos: one big photo, and a strip of small ones underneath.
+ * The reporter (while the report is editable) and staff (for found items
+ * they hold) also get a round × on each small photo to remove it, and a
+ * "+ Add" tile at the end of the strip (up to 3 photos in total).
+ * To replace a photo: remove it, then add the new one. */
+function Gallery({ item, onChanged }) {
+  const [shown, setShown] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const photos = item.photo_ids;
+  const current = Math.min(shown, Math.max(photos.length - 1, 0)); // stays valid after a removal
+  const room = MAX_PHOTOS - photos.length;
+  const canAdd = item.can_add_photos && room > 0;
+  const showStrip = photos.length > 1 || item.can_remove_photos || canAdd;
 
-  async function upload(event) {
-    const file = event.target.files[0];
-    event.target.value = "";
-    if (!file) return;
+  async function add(event) {
+    const files = [...event.target.files].slice(0, room);
+    event.target.value = ""; // so choosing the same file again still works
+    if (!files.length) return;
+    setBusy(true);
+    setError("");
+    let latest = null;
+    const problems = [];
+    // One request per photo; each answers with the updated item.
+    for (const file of files) {
+      try {
+        latest = await apiUpload(`/items/${item.id}/photos`, file);
+      } catch (err) {
+        problems.push(`${file.name}: ${err.message}`);
+      }
+    }
+    if (latest) {
+      onChanged(latest);
+      setShown(latest.photo_ids.length - 1); // show the newest photo
+    }
+    if (problems.length) setError(problems.join(" "));
+    setBusy(false);
+  }
+
+  async function remove(photoId) {
     setBusy(true);
     setError("");
     try {
-      onAdded(await apiUpload(`/items/${itemId}/photos`, file));
+      onChanged(await apiFetch(`/items/${item.id}/photos/${photoId}`, { method: "DELETE" }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -355,15 +588,70 @@ function AddPhoto({ itemId, onAdded }) {
   }
 
   return (
-    <section className={styles.panel}>
-      <div className="field">
-        <label htmlFor="add-photo">Add a photo</label>
-        <span className="hint">JPEG, PNG or WebP, up to 5 MB.</span>
-        <input id="add-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={upload} disabled={busy} />
-        {busy && <span className="hint">Uploading…</span>}
-        {error && <span className="field-error">{error}</span>}
-      </div>
-    </section>
+    <div className={styles.gallery}>
+      {photos.length > 0 ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className={styles.mainPhoto} src={photoUrl(item.id, photos[current])} alt={`Photo of ${item.title}`} />
+      ) : (
+        <div className={styles.noPhoto}>
+          <ImageOff size={28} strokeWidth={1.4} aria-hidden="true" />
+          <span>No photo yet</span>
+        </div>
+      )}
+
+      {showStrip && (
+        <div className={styles.thumbs}>
+          {photos.map((photoId, index) => (
+            <div key={photoId} className={styles.thumbWrap}>
+              <button
+                type="button"
+                className={styles.thumb}
+                aria-label={`Show photo ${index + 1}`}
+                aria-pressed={index === current}
+                onClick={() => setShown(index)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photoUrl(item.id, photoId)} alt="" />
+              </button>
+              {item.can_remove_photos && (
+                <button
+                  type="button"
+                  className={styles.removePhoto}
+                  aria-label={`Remove photo ${index + 1}`}
+                  title="Remove photo"
+                  onClick={() => remove(photoId)}
+                  disabled={busy}
+                >
+                  <X size={16} strokeWidth={2.4} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          ))}
+
+          {canAdd && (
+            // A label around a hidden file input: clicking the tile opens the file picker.
+            <label className={styles.addTile} title={`Add photos (${room} more allowed)`} aria-disabled={busy}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={add}
+                disabled={busy}
+                className="visually-hidden"
+              />
+              <Plus size={20} aria-hidden="true" />
+              <span>{busy ? "Saving…" : "Add"}</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

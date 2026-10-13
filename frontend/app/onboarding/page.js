@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/AuthProvider";
-import SiteHeader from "@/components/SiteHeader";
+import AuthLayout from "@/components/AuthLayout";
 import { apiFetch } from "@/lib/api";
 
 const EMPTY = { full_name: "", roll_number: "", phone: "", hall: "", room: "" };
@@ -108,54 +108,52 @@ export default function OnboardingPage() {
   }
 
   return (
-    <>
-      <SiteHeader />
-      <main className="page">
-        <h1>Complete your profile</h1>
-        <p className="lede">
-          {isStaff
-            ? "Your name is shown to students when you handle their items."
-            : "Security guards check your name and roll number against your ID card when you collect an item, so they can't be changed later."}
-        </p>
+    <AuthLayout>
+      <span className="eyebrow">One last step</span>
+      <h1>Complete your profile</h1>
+      <p className="lede">
+        {isStaff
+          ? "Your name is shown to students when you handle their items."
+          : "Security guards check your name and roll number against your ID card when you collect an item, so they can't be changed later."}
+      </p>
 
-        {error && (
-          <div className="alert" role="alert">
-            {error}
-          </div>
-        )}
+      {error && (
+        <div className="alert" role="alert">
+          {error}
+        </div>
+      )}
 
-        <form onSubmit={submit} noValidate>
-          {field("full_name", "Full name", {
-            hint: nameLocked
-              ? "Already on your account. Ask the admin if it needs correcting."
-              : isStaff
-                ? undefined
-                : "As printed on your student ID card.",
-            autoComplete: "name",
+      <form onSubmit={submit} noValidate>
+        {field("full_name", "Full name", {
+          hint: nameLocked
+            ? "Already on your account. Ask the admin if it needs correcting."
+            : isStaff
+              ? undefined
+              : "As printed on your student ID card.",
+          autoComplete: "name",
+          required: true,
+          readOnly: nameLocked,
+        })}
+        {!isStaff &&
+          field("roll_number", "Roll number", {
+            autoComplete: "off",
             required: true,
-            readOnly: nameLocked,
           })}
-          {!isStaff &&
-            field("roll_number", "Roll number", {
-              autoComplete: "off",
-              required: true,
-            })}
-          {field("phone", "Mobile number (optional)", {
-            hint: "10-digit Indian mobile number.",
-            type: "tel",
-            autoComplete: "tel-national",
-            inputMode: "tel",
-          })}
-          <div className="form-row">
-            {field("hall", "Hall (optional)")}
-            {field("room", "Room (optional)")}
-          </div>
+        {field("phone", "Mobile number (optional)", {
+          hint: "10-digit Indian mobile number.",
+          type: "tel",
+          autoComplete: "tel-national",
+          inputMode: "tel",
+        })}
+        <div className="form-row">
+          {field("hall", "Hall (optional)")}
+          {field("room", "Room (optional)")}
+        </div>
 
-          <button type="submit" className="button" disabled={busy}>
-            {busy ? "Saving…" : "Save profile"}
-          </button>
-        </form>
-      </main>
-    </>
+        <button type="submit" className="button button-full" disabled={busy}>
+          {busy ? "Saving…" : "Save profile"}
+        </button>
+      </form>
+    </AuthLayout>
   );
 }

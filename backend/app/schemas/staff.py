@@ -10,7 +10,7 @@ from app.schemas.user import OfficeBrief
 
 
 class _TidyNotes(BaseModel):
-    @field_validator("secret_detail", "condition_note", "handed_in_by", "note", mode="before", check_fields=False)
+    @field_validator("condition_note", "handed_in_by", "note", mode="before", check_fields=False)
     @classmethod
     def tidy(cls, value):
         return _tidy(value)
@@ -20,8 +20,6 @@ class ReceiveIn(_TidyNotes):
     # The office where the guard is taking it in. Usually the one the finder
     # chose, but finders sometimes go to a different office.
     office_id: int
-    # Keep the finder's secret detail, correct it, or write one if missing.
-    secret_detail: str | None = Field(default=None, max_length=300)
     condition_note: str | None = Field(default=None, max_length=300)
 
 
@@ -29,8 +27,6 @@ class WalkInIn(_ItemIn, _TidyNotes):
     """A guard registering an item someone handed in without an online report."""
 
     office_id: int
-    # Required here: the guard has the item in hand, so there's no excuse.
-    secret_detail: str = Field(min_length=3, max_length=300)
     handed_in_by: str | None = Field(default=None, max_length=120)
 
 
@@ -42,7 +38,7 @@ class TransferIn(_TidyNotes):
 class DisposeIn(_TidyNotes):
     outcome: Literal["DISPOSED", "DONATED"]
     # Required: disposing of something is final, so say why (and where it went).
-    note: str = Field(min_length=3, max_length=300)
+    note: str = Field(min_length=1, max_length=300)
 
 
 class StaffItemOut(ItemCardOut):

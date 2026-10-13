@@ -74,13 +74,6 @@ PUBLIC_STATUSES = {
 HELD_STATUSES = [ItemStatus.IN_CUSTODY, ItemStatus.CLAIM_PENDING]
 
 
-class SecretSource(enum.StrEnum):
-    """Who wrote the secret identifying detail, for accountability."""
-
-    FINDER = "FINDER"
-    GUARD = "GUARD"
-
-
 def _sql_list(values) -> str:
     return ", ".join(f"'{v}'" for v in values)
 
@@ -127,17 +120,17 @@ class Item(TimestampMixin, Base):
     # Where it is right now (set when a guard receives it; changes on transfer).
     current_office_id: Mapped[int | None] = mapped_column(ForeignKey("offices.id"), index=True)
     current_office: Mapped[Office | None] = relationship(foreign_keys=[current_office_id])
-    # Something not visible in photos, used to check claims. Never public.
-    secret_detail: Mapped[str | None] = mapped_column(String(300))
-    secret_detail_by: Mapped[SecretSource | None] = mapped_column(
-        _text_enum(SecretSource, "secret_source", 6)
-    )
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     received_by: Mapped[User | None] = relationship(foreign_keys=[received_by_id])
     # When it was handed back to its owner. Returned records are deleted
     # 60 days after this moment (by the worker, app/worker.py).
     returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the finder pressed "I found this" on a lost report: which
+    # report it answers. The details were copied from that report, so the
+    # finder can't edit them (services/items.py, can_edit).
+    answers_lost_id: Mapped[int | None] = mapped_column(ForeignKey("items.id", ondelete="SET NULL"))
+    answers_lost: Mapped["Item | None"] = relationship(remote_side="Item.id", foreign_keys=[answers_lost_id])
     # When the "please hand it in" reminder was emailed to the finder.
     # Set once, so the reminder is never sent twice.
     dropoff_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -181,11 +174,6 @@ class Item(TimestampMixin, Base):
         CheckConstraint(
             "(kind = 'FOUND') = (dropoff_office_id IS NOT NULL)",
             name="dropoff_office_only_for_found",
-        ),
-        # Only found items have a secret detail.
-        CheckConstraint(
-            "kind = 'FOUND' OR secret_detail IS NULL",
-            name="secret_only_for_found",
         ),
         # An item held at an office must say which office.
         CheckConstraint(

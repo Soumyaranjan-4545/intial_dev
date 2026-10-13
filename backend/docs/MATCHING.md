@@ -53,13 +53,10 @@ Then switch it on:
 
 ## Rules your matcher must follow
 
-1. **Never read `item.secret_detail`.** It is used only to check claims.
-   If it influenced the ranking, someone could learn it by watching which
-   items show up.
-2. **Don't change the app's tables** in `find_similar`. Store your own data
+1. **Don't change the app's tables** in `find_similar`. Store your own data
    (embeddings) in your own table, with its own Alembic migration.
-3. **Be quick.** The item page waits for `find_similar`. Aim for under a second.
-4. **Expect failure to be handled.** If your matcher raises an exception,
+2. **Be quick.** The item page waits for `find_similar`. Aim for under a second.
+3. **Expect failure to be handled.** If your matcher raises an exception,
    the app logs it and shows no suggestions. Reporting an item still works.
 
 ## What the app does for you (you don't need to)

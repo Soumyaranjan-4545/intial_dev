@@ -105,7 +105,10 @@ def _approved_claim(db: Session, item_id: int) -> Claim | None:
 
 
 def can_claim(db: Session, item: Item, user: User) -> bool:
-    """A found item at an office, not reported by you, and no open claim of yours on it."""
+    """A student, a found item at an office, not reported by you, and no open
+    claim of yours on it. Staff can't claim: they're the ones who check claims."""
+    if user.is_staff:
+        return False
     if item.kind != ItemKind.FOUND or item.status not in HELD_STATUSES or item.reporter_id == user.id:
         return False
     return my_open_claim(db, item, user) is None
@@ -144,6 +147,8 @@ def get_claim(db: Session, claim_id: int, user: User) -> Claim:
 
 
 def submit(db: Session, item: Item, user: User, description: str) -> Claim:
+    if user.is_staff:
+        raise forbidden("Security staff can't claim items. Sign in with a student account.")
     if item.reporter_id == user.id:
         raise bad_request("You reported this item, so you can't claim it.")
     if item.kind != ItemKind.FOUND or item.status not in HELD_STATUSES:
@@ -335,7 +340,6 @@ def detail_for(db: Session, claim: Claim, user: User) -> dict:
         "can_add_proof": can_add_proof(claim, user),
         "on_hold": on_hold,
         "claimant": claim.claimant if staff else None,
-        "secret_detail": claim.item.secret_detail if staff else None,
         "other_claims": other_claims,
         "can_start_review": staff_can(S.UNDER_REVIEW) and claim.status == S.SUBMITTED,
         "can_request_info": staff_can(S.NEEDS_MORE_INFO),

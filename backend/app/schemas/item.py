@@ -22,12 +22,12 @@ def _tidy(value):
 
 
 class _ItemIn(BaseModel):
-    title: str = Field(min_length=3, max_length=120)
-    description: str = Field(min_length=10, max_length=1000)
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=1000)
     category_id: int
     colour: str | None = Field(default=None, max_length=40)
     brand: str | None = Field(default=None, max_length=60)
-    location_text: str = Field(min_length=3, max_length=200)
+    location_text: str = Field(min_length=1, max_length=200)
     happened_on: date
 
     @field_validator("title", "colour", "brand", "location_text", mode="before")
@@ -48,22 +48,12 @@ class LostItemIn(_ItemIn):
 
 class FoundItemIn(_ItemIn):
     dropoff_office_id: int
-    # Optional for the finder; the guard must fill it in at drop-off if empty.
-    secret_detail: str | None = Field(default=None, max_length=300)
-
-    @field_validator("secret_detail", mode="before")
-    @classmethod
-    def tidy_secret(cls, value):
-        return _tidy(value)
+    # Set when reporting through "I found this" on a lost report.
+    for_lost_id: int | None = None
 
 
-class SecretDetailIn(BaseModel):
-    secret_detail: str | None = Field(default=None, max_length=300)
-
-    @field_validator("secret_detail", mode="before")
-    @classmethod
-    def tidy_secret(cls, value):
-        return _tidy(value)
+class DropoffOfficeIn(BaseModel):
+    office_id: int
 
 
 class CloseLostIn(BaseModel):
@@ -76,7 +66,7 @@ class CloseLostIn(BaseModel):
 
 class ItemCardOut(BaseModel):
     """What the Found and Lost pages show for each item. Deliberately
-    contains no secret detail and nothing about who reported it."""
+    contains nothing about who reported it."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -134,14 +124,18 @@ class ItemDetailOut(ItemCardOut):
     dropoff_office: OfficeOut | None
     current_office_full: OfficeOut | None
     received_at: datetime | None
-    # Only filled in for people allowed to see it (see services/items.py).
-    secret_detail: str | None
-    secret_detail_by: str | None
     # What the person viewing may do, so the page knows which buttons to show.
     is_mine: bool
     can_add_photos: bool
-    can_edit_secret: bool
+    can_remove_photos: bool
+    can_edit: bool
     can_close: bool
+    # Found items, before hand-in: the finder may pick another office or cancel.
+    can_change_dropoff: bool
+    can_cancel: bool
+    # "I found this": the lost report this found item answers.
+    answers_lost_id: int | None
+    answers_lost_ref: str | None
     returned_at: datetime | None
     # ---- Similar items ----
     can_see_similar: bool

@@ -74,3 +74,16 @@ export const CLAIM_STATUS_LABELS = {
 
 /** Claims that are still going (the rest are finished). */
 export const OPEN_CLAIM_STATUSES = ["SUBMITTED", "UNDER_REVIEW", "NEEDS_MORE_INFO", "APPROVED"];
+
+/** A date (no time) as "today", "yesterday", "5 days ago", or "12 Oct 2026" when older than a month. */
+export function daysAgo(isoDate) {
+  const [year, month, day] = isoDate.slice(0, 10).split("-").map(Number);
+  const then = new Date(year, month - 1, day);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((today - then) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 31) return `${days} days ago`;
+  return `on ${formatDate(isoDate)}`;
+}

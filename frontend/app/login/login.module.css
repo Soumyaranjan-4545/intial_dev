@@ -1,100 +1,82 @@
-/*
- * The sign-in panel is drawn as a lost-property tag: the manila tag with a
- * reinforced hole and a string that security offices tie to found items.
- * It's the one decorative element in the app; every other page stays plain.
- */
-
-.page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 3rem 1rem;
-}
-
-.tag {
-  position: relative;
-  width: 100%;
-  max-width: 25rem;
-  padding-top: 3.5rem; /* room for the string above the tag */
-}
-
-/* The string, looping up from the hole. */
-.string {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 7rem;
-  height: 5.25rem;
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 2; /* in front of the tag, so it visibly threads into the hole */
-}
+/* The sign-in form, inside the split screen (components/AuthLayout). */
 
 .card {
-  background: var(--manila);
-  color: var(--ink);
-  padding: 4.25rem 2rem 2rem;
-  /* Tag shape: the two top corners cut off diagonally. */
-  clip-path: polygon(18% 0, 82% 0, 100% 9%, 100% 100%, 0 100%, 0 9%);
-  /* Faint paper fibre texture, made with two repeating gradients. */
-  background-image:
-    repeating-linear-gradient(115deg, rgb(255 255 255 / 0.08) 0 2px, transparent 2px 9px),
-    repeating-linear-gradient(25deg, rgb(120 90 30 / 0.05) 0 1px, transparent 1px 7px);
-}
-
-/* The punched hole with its reinforcement ring. */
-.hole {
-  position: absolute;
-  top: 4.6rem;
-  left: 50%;
-  width: 1.5rem;
-  height: 1.5rem;
-  transform: translateX(-50%);
-  /* The card's clip-path puts it in its own layer, which would paint over
-     the hole; z-index keeps the hole on top. */
-  z-index: 1;
-  border-radius: 50%;
-  background: var(--page);
-  box-shadow: 0 0 0 0.4rem var(--manila-edge);
+  width: 100%;
 }
 
 .heading {
-  font-size: var(--text-2xl);
-  margin-bottom: 0.25rem;
+  font-size: 1.9rem;
+  margin-bottom: 0.5rem;
+}
+
+/* "Student | Admin / Guard" switch. */
+.modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0.75rem 0 1rem;
+  padding: 4px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.mode {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+/* The radio circle itself is hidden; the whole label acts as the button. */
+.mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode:has(input:checked) {
+  background: var(--surface);
+  color: var(--brand-dark);
+  box-shadow: var(--shadow-1), 0 0 0 1px var(--rule);
+}
+
+.mode:has(input:focus-visible) {
+  box-shadow: var(--focus);
 }
 
 .lede {
-  color: #4a4535;
+  color: var(--ink-soft);
   margin-bottom: 1.5rem;
 }
 
-/* Fields sit on manila, so they get a slightly stronger border. */
-.card input {
-  border-color: var(--manila-edge);
-}
-
+/* The code box: big, centred, spaced-out mono digits. */
 .code {
-  font-size: var(--text-xl) !important;
-  font-weight: 700;
-  letter-spacing: 0.5em;
+  font-family: var(--font-mono) !important;
+  font-size: 1.85rem !important;
+  letter-spacing: 0.45em;
   text-align: center;
-  font-variant-numeric: tabular-nums;
-  /* letter-spacing adds space after the last digit too; balance it. */
-  padding-left: calc(0.75rem + 0.5em) !important;
+  padding: 12px 0 12px 0.45em !important;
 }
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 1rem;
   margin-top: 1rem;
 }
 
 .devHint {
-  font-size: var(--text-sm);
-  color: #4a4535;
-  border-top: 1px dashed var(--manila-edge);
-  padding-top: 0.75rem;
-  margin: 1.5rem 0 0;
+  margin-top: 1.5rem;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--amber-wash);
+  color: var(--amber);
+  font-size: 0.8rem;
 }
