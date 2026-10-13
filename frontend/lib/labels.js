@@ -58,3 +58,19 @@ export function formatDateTime(isoDateTime) {
 export function daysSince(isoDateTime) {
   return Math.floor((Date.now() - new Date(isoDateTime).getTime()) / 86400000);
 }
+
+/** Claim statuses, as the claimant reads them. */
+export const CLAIM_STATUS_LABELS = {
+  SUBMITTED: "Waiting for review",
+  UNDER_REVIEW: "Being reviewed",
+  NEEDS_MORE_INFO: "Visit the office",
+  APPROVED: "Approved: ready to collect",
+  COLLECTED: "Collected",
+  REJECTED: "Not approved",
+  WITHDRAWN: "Withdrawn",
+  EXPIRED: "Expired (not collected in time)",
+  CLOSED: "Closed (item returned to someone else)",
+};
+
+/** Claims that are still going (the rest are finished). */
+export const OPEN_CLAIM_STATUSES = ["SUBMITTED", "UNDER_REVIEW", "NEEDS_MORE_INFO", "APPROVED"];

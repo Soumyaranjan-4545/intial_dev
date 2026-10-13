@@ -13,10 +13,19 @@ const LINKS = [
   { href: "/found", label: "Found items" },
   { href: "/lost", label: "Lost items" },
   { href: "/my-reports", label: "My reports" },
+  { href: "/my-claims", label: "My claims" },
   // Extra links shown only to the roles listed.
   { href: "/staff", label: "Staff desk", roles: ["GUARD", "ADMIN"] },
+  { href: "/staff/claims", label: "Claims desk", roles: ["GUARD", "ADMIN"] },
   { href: "/admin/guards", label: "Manage guards", roles: ["ADMIN"] },
 ];
+
+/** Which link matches the current page? The longest match wins, so on
+ * /staff/claims "Claims desk" is marked, not "Staff desk" (/staff). */
+function currentLink(pathname, links) {
+  const matches = links.filter((link) => pathname === link.href || pathname.startsWith(`${link.href}/`));
+  return matches.sort((a, b) => b.href.length - a.href.length)[0]?.href;
+}
 
 export default function SiteHeader() {
   const { user, signOut } = useAuth();
@@ -33,6 +42,9 @@ export default function SiteHeader() {
       setSigningOut(false);
     }
   }
+
+  const visible = user ? LINKS.filter((link) => !link.roles || link.roles.includes(user.role)) : [];
+  const current = currentLink(pathname, visible);
 
   return (
     <header className={styles.header}>
@@ -55,13 +67,13 @@ export default function SiteHeader() {
       {user?.is_onboarded && (
         <nav className={styles.nav} aria-label="Main">
           <div className={styles.navInner}>
-            {LINKS.filter((link) => !link.roles || link.roles.includes(user.role)).map((link) => (
+            {visible.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 className={styles.navLink}
                 // aria-current tells screen readers (and our CSS) which page is open.
-                aria-current={pathname.startsWith(link.href) ? "page" : undefined}
+                aria-current={link.href === current ? "page" : undefined}
               >
                 {link.label}
               </Link>

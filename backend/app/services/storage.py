@@ -1,6 +1,7 @@
-"""Saving and reading item photo files.
+"""Saving and reading uploaded images (item photos and claim proofs).
 
-For now files live in a folder on the server (backend/uploads/items).
+For now files live in folders on the server: backend/uploads/items for item
+photos, backend/uploads/proofs for claim proof images.
 When the app is deployed, only this file needs to change to use cloud
 storage instead; the rest of the code just calls save / path / delete.
 
@@ -38,8 +39,15 @@ def detect_image_type(head: bytes) -> tuple[str, str] | None:
     return None
 
 
-def _photo_dir() -> Path:
-    folder = get_settings().upload_dir / "items"
+# Item photos and claim proofs are kept apart: proofs are private and are
+# deleted soon after a claim closes (Phase 7).
+FOLDERS = ("items", "proofs")
+
+
+def _folder(name: str) -> Path:
+    if name not in FOLDERS:
+        raise ValueError(f"Unknown upload folder: {name}")
+    folder = get_settings().upload_dir / name
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 
@@ -61,16 +69,16 @@ async def read_image(upload: UploadFile) -> tuple[bytes, str, str]:
     return data, content_type, extension
 
 
-def save(data: bytes, extension: str) -> str:
+def save(data: bytes, extension: str, folder: str = "items") -> str:
     """Write the file and return the random name it was stored under."""
     stored_name = secrets.token_hex(16) + extension
-    (_photo_dir() / stored_name).write_bytes(data)
+    (_folder(folder) / stored_name).write_bytes(data)
     return stored_name
 
 
-def path_for(stored_name: str) -> Path:
-    return _photo_dir() / stored_name
+def path_for(stored_name: str, folder: str = "items") -> Path:
+    return _folder(folder) / stored_name
 
 
-def delete(stored_name: str) -> None:
-    path_for(stored_name).unlink(missing_ok=True)
+def delete(stored_name: str, folder: str = "items") -> None:
+    path_for(stored_name, folder).unlink(missing_ok=True)

@@ -134,6 +134,9 @@ class Item(TimestampMixin, Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     received_by: Mapped[User | None] = relationship(foreign_keys=[received_by_id])
+    # When it was handed back to its owner. Returned records are deleted
+    # 60 days after this moment (Phase 7).
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # ---- Search ----
     # PostgreSQL keeps this column up to date by itself ("generated column"):

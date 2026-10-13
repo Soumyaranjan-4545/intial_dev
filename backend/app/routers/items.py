@@ -55,20 +55,20 @@ def my_items(user: OnboardedUser, db: DbSession, page: PageNumber = 1, page_size
 @router.post("/lost", response_model=ItemDetailOut, status_code=status.HTTP_201_CREATED)
 def report_lost(data: LostItemIn, user: OnboardedUser, db: DbSession):
     item = items_service.report_lost(db, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.post("/found", response_model=ItemDetailOut, status_code=status.HTTP_201_CREATED)
 def report_found(data: FoundItemIn, user: OnboardedUser, db: DbSession):
     """The item stays hidden from the Found page until a guard receives it."""
     item = items_service.report_found(db, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.get("/{item_id}", response_model=ItemDetailOut)
 def item_detail(item_id: int, user: OnboardedUser, db: DbSession):
     item = items_service.get_visible_item(db, item_id, user)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.put("/{item_id}/secret-detail", response_model=ItemDetailOut)
@@ -76,7 +76,7 @@ def update_secret(item_id: int, data: SecretDetailIn, user: OnboardedUser, db: D
     """The finder can change the secret detail until drop-off."""
     item = items_service.get_visible_item(db, item_id, user)
     items_service.update_secret(db, item, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.post("/{item_id}/close", response_model=ItemDetailOut)
@@ -84,7 +84,7 @@ def close_lost(item_id: int, data: CloseLostIn, user: OnboardedUser, db: DbSessi
     """Close my lost report: RECOVERED (got it back) or CLOSED (stopped looking)."""
     item = items_service.get_visible_item(db, item_id, user)
     items_service.close_lost(db, item, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.post("/{item_id}/photos", response_model=ItemDetailOut, status_code=status.HTTP_201_CREATED)
@@ -93,7 +93,7 @@ async def upload_photo(item_id: int, user: OnboardedUser, db: DbSession, file: U
     item = items_service.get_visible_item(db, item_id, user)
     data, content_type, extension = await storage.read_image(file)
     items_service.add_photo(db, item, user, data, content_type, extension)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.get("/{item_id}/photos/{photo_id}")

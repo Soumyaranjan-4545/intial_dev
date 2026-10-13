@@ -13,7 +13,7 @@ import AppShell from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import StaffPanel from "@/components/StaffPanel";
 import { apiFetch, apiUpload, photoUrl } from "@/lib/api";
-import { STATUS_LABELS, formatDate } from "@/lib/labels";
+import { CLAIM_STATUS_LABELS, OPEN_CLAIM_STATUSES, STATUS_LABELS, formatDate, formatDateTime } from "@/lib/labels";
 import styles from "./item.module.css";
 
 // Statuses shown on the public Found and Lost pages.
@@ -146,6 +146,14 @@ function ItemDetail() {
         </section>
       )}
 
+      {isFound && <ClaimBox item={item} />}
+
+      {item.returned_at && (
+        <p className="success" role="status">
+          Returned to its owner on {formatDateTime(item.returned_at)}.
+        </p>
+      )}
+
       <dl className={styles.facts}>
         <dt>Category</dt>
         <dd>{item.category.name}</dd>
@@ -175,6 +183,8 @@ function ItemDetail() {
         <SecretDetail item={item} onSaved={setItem} />
       )}
 
+      {isStaff && isFound && item.claims.length > 0 && <ItemClaims claims={item.claims} />}
+
       {isStaff && isFound && <StaffPanel item={item} onChanged={setItem} />}
 
       {item.can_add_photos && <AddPhoto itemId={item.id} onAdded={setItem} />}
@@ -191,6 +201,62 @@ function ItemDetail() {
         </section>
       )}
     </article>
+  );
+}
+
+/** "This is mine", or a link to my claim if I already made one. */
+function ClaimBox({ item }) {
+  const mine = item.my_claim;
+  const mineIsOpen = mine && OPEN_CLAIM_STATUSES.includes(mine.status);
+
+  if (mineIsOpen) {
+    return (
+      <section className={styles.nextStep} aria-labelledby="claim-heading">
+        <h2 id="claim-heading">Your claim</h2>
+        <p>
+          <Link href={`/claims/${mine.id}`}>{mine.ref}</Link>: {CLAIM_STATUS_LABELS[mine.status].toLowerCase()}.
+        </p>
+      </section>
+    );
+  }
+  if (!item.can_claim) return null;
+  return (
+    <section className={styles.panel} aria-labelledby="claim-heading">
+      <h2 id="claim-heading">Is this yours?</h2>
+      <p>
+        Tell a security guard something only the owner would know. If they agree it's yours, you collect it from the
+        office with your student ID card.
+        {mine && (
+          <>
+            {" "}
+            Your earlier claim <Link href={`/claims/${mine.id}`}>{mine.ref}</Link> was{" "}
+            {CLAIM_STATUS_LABELS[mine.status].toLowerCase()}.
+          </>
+        )}
+      </p>
+      <p>
+        <Link href={`/items/${item.id}/claim`} className="button">
+          This is mine
+        </Link>
+      </p>
+    </section>
+  );
+}
+
+/** For staff: every claim on this item. */
+function ItemClaims({ claims }) {
+  return (
+    <section className={styles.panel} aria-labelledby="claims-heading">
+      <h2 id="claims-heading">Claims on this item</h2>
+      <ul>
+        {claims.map((claim) => (
+          <li key={claim.id}>
+            <Link href={`/claims/${claim.id}`}>{claim.ref}</Link> by {claim.claimant_name},{" "}
+            {CLAIM_STATUS_LABELS[claim.status].toLowerCase()} (sent {formatDateTime(claim.created_at)})
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

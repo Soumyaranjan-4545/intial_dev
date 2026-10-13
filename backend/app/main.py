@@ -11,14 +11,14 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.routers import admin, auth, health, items, reference, staff, users
+from app.routers import admin, auth, claims, health, items, reference, staff, users
 
 settings = get_settings()
 
 app = FastAPI(
     title="IITK Lost & Found API",
     description="Report, find, claim and return lost items through campus security offices.",
-    version="0.4.0",
+    version="0.5.0",
 )
 
 # CORS: browsers block a page on one address (the Next.js site, port 3000)
@@ -46,4 +46,5 @@ app.include_router(users.router)
 app.include_router(reference.router)
 app.include_router(items.router)
 app.include_router(staff.router)
+app.include_router(claims.router)
 app.include_router(admin.router)

@@ -97,3 +97,8 @@ export function apiUpload(path, file, fieldName = "file") {
 export function photoUrl(itemId, photoId) {
   return `/api/items/${itemId}/photos/${photoId}`;
 }
+
+/** Address of a claim's proof image (only the claimant and staff can open it). */
+export function proofUrl(claimId, proofId) {
+  return `/api/claims/${claimId}/proofs/${proofId}`;
+}

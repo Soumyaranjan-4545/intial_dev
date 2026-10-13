@@ -142,6 +142,10 @@ class ItemDetailOut(ItemCardOut):
     can_add_photos: bool
     can_edit_secret: bool
     can_close: bool
+    returned_at: datetime | None
+    # ---- Claims ----
+    can_claim: bool
+    my_claim: "MyClaimBrief | None"
     # ---- Staff only (empty for everyone else) ----
     reporter: PersonBrief | None
     received_by_name: str | None
@@ -149,3 +153,25 @@ class ItemDetailOut(ItemCardOut):
     can_receive: bool
     can_transfer: bool
     can_dispose: bool
+    claims: list["ItemClaimRow"]
+
+
+class MyClaimBrief(BaseModel):
+    """My latest claim on this item, so the item page can link to it."""
+
+    id: int
+    ref: str
+    status: str
+
+
+class ItemClaimRow(BaseModel):
+    """For staff: every claim on this item."""
+
+    id: int
+    ref: str
+    status: str
+    claimant_name: str | None
+    created_at: datetime
+
+
+ItemDetailOut.model_rebuild()

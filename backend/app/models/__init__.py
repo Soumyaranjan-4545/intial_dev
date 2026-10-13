@@ -5,14 +5,20 @@ model file must be added to this list."""
 from app.models.auth import LoginCode, UserSession
 from app.models.base import Base
 from app.models.category import Category
+from app.models.claim import OPEN_CLAIM_STATUSES, Claim, ClaimEvent, ClaimProof, ClaimStatus
 from app.models.custody import CustodyEvent, CustodyEventType
 from app.models.item import Item, ItemKind, ItemPhoto, ItemStatus, SecretSource
 from app.models.office import Office
 from app.models.user import User, UserRole
 
 __all__ = [
+    "OPEN_CLAIM_STATUSES",
     "Base",
     "Category",
+    "Claim",
+    "ClaimEvent",
+    "ClaimProof",
+    "ClaimStatus",
     "CustodyEvent",
     "CustodyEventType",
     "Item",

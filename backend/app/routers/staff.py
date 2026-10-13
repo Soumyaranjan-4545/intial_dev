@@ -34,21 +34,21 @@ def staff_items(
 def register_walk_in(data: WalkInIn, user: StaffUser, db: DbSession):
     """Register an item someone handed in without an online report."""
     item = custody.register_walk_in(db, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.post("/items/{item_id}/receive", response_model=ItemDetailOut)
 def receive_item(item_id: int, data: ReceiveIn, user: StaffUser, db: DbSession):
     item = items_service.get_visible_item(db, item_id, user)
     custody.receive_item(db, item, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.post("/items/{item_id}/transfer", response_model=ItemDetailOut)
 def transfer_item(item_id: int, data: TransferIn, user: StaffUser, db: DbSession):
     item = items_service.get_visible_item(db, item_id, user)
     custody.transfer(db, item, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)
 
 
 @router.post("/items/{item_id}/dispose", response_model=ItemDetailOut)
@@ -56,4 +56,4 @@ def dispose_item(item_id: int, data: DisposeIn, user: StaffUser, db: DbSession):
     """Mark an unclaimed item as DISPOSED or DONATED. A note is required."""
     item = items_service.get_visible_item(db, item_id, user)
     custody.dispose(db, item, user, data)
-    return items_service.detail_for(item, user)
+    return items_service.detail_for(db, item, user)

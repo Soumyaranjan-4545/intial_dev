@@ -142,12 +142,14 @@ def get_visible_item(db: Session, item_id: int, user: User) -> Item:
     return item
 
 
-def detail_for(item: Item, user: User) -> dict:
+def detail_for(db: Session, item: Item, user: User) -> dict:
     """Build the detail response. The secret detail, the reporter and the
     custody history are only copied in for people allowed to see them; for
     everyone else those fields stay empty."""
-    from app.services import custody  # imported here to avoid a circular import
+    # Imported here to avoid a circular import (those modules import this one's models).
+    from app.services import claims, custody
 
+    my_claim = claims.latest_claim_of(db, item, user)
     show_secret = can_see_secret(item, user)
     staff = user.is_staff
     return {
@@ -155,6 +157,7 @@ def detail_for(item: Item, user: User) -> dict:
             "id", "ref", "kind", "status", "title", "description", "category",
             "colour", "brand", "location_text", "happened_on", "created_at",
             "current_office", "cover_photo_id", "dropoff_office", "received_at",
+            "returned_at",
         )},
         "current_office_full": item.current_office,
         "photo_ids": [photo.id for photo in item.photos],
@@ -164,6 +167,9 @@ def detail_for(item: Item, user: User) -> dict:
         "can_add_photos": can_add_photos(item, user),
         "can_edit_secret": can_edit_secret(item, user),
         "can_close": can_close(item, user),
+        # ---- Claims ----
+        "can_claim": claims.can_claim(db, item, user),
+        "my_claim": my_claim,
         # ---- Staff only ----
         "reporter": item.reporter if staff else None,
         "received_by_name": item.received_by.full_name if staff and item.received_by else None,
@@ -171,6 +177,7 @@ def detail_for(item: Item, user: User) -> dict:
         "can_receive": custody.can_receive(item, user),
         "can_transfer": custody.can_transfer(item, user),
         "can_dispose": custody.can_dispose(item, user),
+        "claims": claims.claims_on_item(db, item) if staff else [],
     }
 
 
