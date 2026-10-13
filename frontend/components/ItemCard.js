@@ -9,9 +9,11 @@ import { photoUrl } from "@/lib/api";
 import { FINISHED_STATUSES, STATUS_LABELS, formatDate } from "@/lib/labels";
 import styles from "./ItemCard.module.css";
 
-export default function ItemCard({ item, showStatus = false, extraAction = null }) {
+// fadeFinished: grey out returned/closed items (useful in My reports, where
+// they're mixed with open ones; not on the Returned page, where all are).
+export default function ItemCard({ item, showStatus = false, extraAction = null, fadeFinished = true }) {
   const isFound = item.kind === "FOUND";
-  const finished = FINISHED_STATUSES.includes(item.status);
+  const finished = fadeFinished && FINISHED_STATUSES.includes(item.status);
 
   return (
     <article className={`${styles.card} ${finished ? styles.finished : ""}`}>

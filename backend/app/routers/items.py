@@ -18,11 +18,12 @@ from app.schemas.item import (
     ItemDetailOut,
     ItemPage,
     LostItemIn,
+    ReturnedPage,
     SecretDetailIn,
     SimilarOut,
 )
 from app.services import items as items_service
-from app.services import matching, storage
+from app.services import matching, returned, storage
 
 router = APIRouter(prefix="/items", tags=["items"])
 
@@ -45,6 +46,20 @@ def list_items(
     """The Found page (kind=FOUND) or the Lost page (kind=LOST)."""
     search = q.strip() if q else None
     return items_service.list_public(db, kind, category, search or None, page, page_size)
+
+
+@router.get("/returned", response_model=ReturnedPage)
+def returned_items(
+    user: OnboardedUser,
+    db: DbSession,
+    category: Annotated[str | None, Query(max_length=60)] = None,
+    page: PageNumber = 1,
+    page_size: PageSize = 12,
+):
+    """The Returned Items page, most recent return first. Staff also get
+    who collected each item and who handed it over. Records are deleted
+    60 days after the return."""
+    return returned.list_returned(db, user, category, page, page_size)
 
 
 @router.get("/mine", response_model=ItemPage)

@@ -12,10 +12,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import engine, get_db
 from app.main import app
 from app.models import Item, LoginCode, User, UserRole, UserSession
 from app.services import email as email_service
+
+
+@pytest.fixture(autouse=True)
+def temp_uploads(tmp_path, monkeypatch):
+    """Every test saves photos and proofs in its own temporary folder, so
+    tests never leave files in your real backend/uploads folder."""
+    monkeypatch.setattr(get_settings(), "upload_dir", tmp_path / "uploads")
+    return tmp_path / "uploads"
 
 
 @pytest.fixture

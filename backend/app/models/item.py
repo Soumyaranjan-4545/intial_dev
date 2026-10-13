@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -135,8 +136,11 @@ class Item(TimestampMixin, Base):
     received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     received_by: Mapped[User | None] = relationship(foreign_keys=[received_by_id])
     # When it was handed back to its owner. Returned records are deleted
-    # 60 days after this moment (Phase 7).
+    # 60 days after this moment (by the worker, app/worker.py).
     returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the "please hand it in" reminder was emailed to the finder.
+    # Set once, so the reminder is never sent twice.
+    dropoff_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # ---- Search ----
     # PostgreSQL keeps this column up to date by itself ("generated column"):
@@ -197,6 +201,9 @@ class Item(TimestampMixin, Base):
         Index("ix_items_kind_category_created", "kind", "category_id", "created_at"),
         # GIN index: the right index type for "which rows contain these words".
         Index("ix_items_search_vector", "search_vector", postgresql_using="gin"),
+        # Returned Items page (newest return first) and the 60-day purge.
+        # Partial: only returned items are in this index, so it stays small.
+        Index("ix_items_returned_at", "returned_at", postgresql_where=text("status = 'RETURNED'")),
     )
 
     @property

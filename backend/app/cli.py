@@ -6,9 +6,8 @@ Make someone the admin:
 Create sample items to try the Found/Lost pages and page numbers:
     python -m app.cli demo-items --count 30
 
-Expire approved claims that weren't collected within 7 days:
-    python -m app.cli expire-claims
-(Phase 7 will run this automatically on a schedule.)
+Timed jobs (reminders, claim expiry, clean-up) are run by the worker:
+    python -m app.worker
 
 There's no API endpoint for make-admin on purpose: nobody can become admin
 through the website. Only someone with access to the server can do it.
@@ -111,14 +110,6 @@ def demo_items(count: int) -> None:
     print(f"Created {count} demo items (about two thirds found, one third lost).")
 
 
-def expire_claims() -> None:
-    from app.services import claims
-
-    with SessionLocal() as db:
-        count = claims.expire_overdue(db)
-    print(f"Expired {count} approved claim(s) that were not collected in time.")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -129,16 +120,12 @@ def main() -> None:
     demo_cmd = commands.add_parser("demo-items", help="create sample items")
     demo_cmd.add_argument("--count", type=int, default=30)
 
-    commands.add_parser("expire-claims", help="expire approved claims not collected in time")
-
     args = parser.parse_args()
     try:
         if args.command == "make-admin":
             make_admin(args.email)
         elif args.command == "demo-items":
             demo_items(args.count)
-        elif args.command == "expire-claims":
-            expire_claims()
     except AppError as error:
         raise SystemExit(f"Error: {error.message}")
 

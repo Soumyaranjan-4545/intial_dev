@@ -10,7 +10,7 @@ owner must still pass an ID-card check at the desk before the item is handed ove
 """
 
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -272,10 +272,12 @@ def hand_over(db: Session, claim: Claim, staff: User, note: str | None) -> Claim
     return claim
 
 
-def expire_overdue(db: Session) -> int:
+def expire_overdue(db: Session, at: datetime | None = None) -> int:
     """Approved claims not collected in time become EXPIRED, so the item is
-    free for other claimants again. Run regularly (Phase 7 automates it)."""
-    overdue = list(db.scalars(select(Claim).where(Claim.status == S.APPROVED, Claim.collect_by < now())))
+    free for other claimants again. The worker runs this every few minutes;
+    `at` lets tests pretend it's days later."""
+    at = at or now()
+    overdue = list(db.scalars(select(Claim).where(Claim.status == S.APPROVED, Claim.collect_by < at)))
     for claim in overdue:
         _move(db, claim, S.EXPIRED, None, f"Not collected within {COLLECT_DAYS} days.")
     db.commit()

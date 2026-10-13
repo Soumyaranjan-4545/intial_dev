@@ -76,8 +76,11 @@ class Claim(TimestampMixin, Base):
     handed_over_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     handed_over_by: Mapped[User | None] = relationship(foreign_keys=[handed_over_by_id])
     # When the claim reached a final status. Proof images are deleted 2 days
-    # after this (Phase 7).
+    # after this (by the worker).
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Reminders, each sent at most once (see services/jobs.py).
+    collect_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     events: Mapped[list["ClaimEvent"]] = relationship(
         back_populates="claim", order_by="ClaimEvent.id", cascade="all, delete-orphan", passive_deletes=True

@@ -12,6 +12,7 @@ const ROLE_NAMES = { STUDENT: "Student", GUARD: "Security guard", ADMIN: "Admin"
 const LINKS = [
   { href: "/found", label: "Found items" },
   { href: "/lost", label: "Lost items" },
+  { href: "/returned", label: "Returned" },
   { href: "/my-reports", label: "My reports" },
   { href: "/my-claims", label: "My claims" },
   // Extra links shown only to the roles listed.

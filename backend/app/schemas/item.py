@@ -176,6 +176,31 @@ class ItemClaimRow(BaseModel):
     created_at: datetime
 
 
+class ReturnedStaffOut(BaseModel):
+    """Only sent to staff: who got the item back, and who handed it over."""
+
+    claim_id: int
+    claim_ref: str
+    collected_by: str | None
+    collected_by_roll: str | None
+    handed_over_by: str | None
+    note: str | None
+
+
+class ReturnedItemOut(ItemCardOut):
+    returned_at: datetime
+    returned_from: OfficeBrief | None
+    staff: ReturnedStaffOut | None  # None for students
+
+
+class ReturnedPage(BaseModel):
+    items: list[ReturnedItemOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class SimilarItemOut(BaseModel):
     item: ItemCardOut
     score: float  # 0..1, from the matcher

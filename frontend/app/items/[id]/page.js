@@ -80,7 +80,9 @@ function ItemDetail() {
 
       <p className={styles.back}>
         {/* Items not on the public pages (e.g. waiting to be handed in) link back to My reports. */}
-        {item.is_mine && !PUBLIC.includes(item.status) ? (
+        {item.status === "RETURNED" ? (
+          <Link href="/returned">Returned items</Link>
+        ) : item.is_mine && !PUBLIC.includes(item.status) ? (
           <Link href="/my-reports">My reports</Link>
         ) : (
           <Link href={isFound ? "/found" : "/lost"}>{isFound ? "Found items" : "Lost items"}</Link>

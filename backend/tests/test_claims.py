@@ -250,8 +250,8 @@ def test_hand_over_returns_item_and_closes_other_claims(person, held_item):
     assert item["returned_at"] is not None
     assert item["current_office"] is None
     assert item["custody_events"][-1]["event_type"] == "RETURNED"
-    # A returned item is off the Found page, so other students can't claim it.
-    assert claim(person(), held_item["id"]).status_code == 404
+    # A returned item is listed on the Returned Items page, but can't be claimed.
+    assert claim(person(), held_item["id"]).status_code == 400
 
 
 def test_second_claim_can_be_approved_after_first_is_rejected(person, held_item):

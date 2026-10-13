@@ -99,7 +99,10 @@ def is_public(item: Item) -> bool:
 
 
 def can_view(item: Item, user: User) -> bool:
-    return is_public(item) or user.is_staff or item.reporter_id == user.id
+    # Returned items are listed on the public Returned Items page, so their
+    # page and photos can be opened too (still without the secret detail).
+    returned = item.kind == ItemKind.FOUND and item.status == ItemStatus.RETURNED
+    return is_public(item) or returned or user.is_staff or item.reporter_id == user.id
 
 
 def can_see_secret(item: Item, user: User) -> bool:

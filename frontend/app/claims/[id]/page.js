@@ -19,7 +19,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
 import { apiFetch, apiUpload, photoUrl, proofUrl } from "@/lib/api";
-import { CLAIM_STATUS_LABELS, formatDateTime } from "@/lib/labels";
+import { CLAIM_STATUS_LABELS, OPEN_CLAIM_STATUSES as OPEN_STATUSES, formatDateTime } from "@/lib/labels";
 import styles from "./claimPage.module.css";
 
 export default function ClaimPage() {
@@ -84,7 +84,7 @@ function ClaimDetail() {
         </p>
       </header>
 
-      <ItemBrief item={claim.item} linkable={isStaffView || claim.item.current_office !== null} />
+      <ItemBrief item={claim.item} />
 
       {claim.is_mine && <NextStep claim={claim} />}
 
@@ -103,7 +103,7 @@ function ClaimDetail() {
   );
 }
 
-function ItemBrief({ item, linkable }) {
+function ItemBrief({ item }) {
   return (
     <div className={styles.itemBrief}>
       {item.cover_photo_id ? (
@@ -113,8 +113,7 @@ function ItemBrief({ item, linkable }) {
         <span className={styles.noPhoto}>{item.category.name}</span>
       )}
       <div>
-        {/* A returned item is no longer on the Found page, so only staff can open it. */}
-        {linkable ? <Link href={`/items/${item.id}`}>{item.title}</Link> : <strong>{item.title}</strong>}
+        <Link href={`/items/${item.id}`}>{item.title}</Link>
         <span className={styles.muted}> {item.ref}</span>
         <br />
         <span className={styles.muted}>
@@ -253,7 +252,13 @@ function Proofs({ claim, onChanged }) {
           </ul>
         </>
       )}
-      {claim.proof_ids.length === 0 && !claim.can_add_proof && <p className={styles.muted}>No proof images.</p>}
+      {claim.proof_ids.length === 0 && !claim.can_add_proof && (
+        <p className={styles.muted}>
+          {OPEN_STATUSES.includes(claim.status)
+            ? "No proof images."
+            : "No proof images. (Proof images are deleted 2 days after a claim closes.)"}
+        </p>
+      )}
       {claim.can_add_proof && (
         <div className="field">
           <label htmlFor="add-proof">Add a proof image</label>
